@@ -98,7 +98,10 @@ describe('environment-policy service and tool composition', () => {
 
       expect(ctx.tools.schemas().map(schema => schema.name)).toEqual(['policy_search'])
       const prompt = await ctx.systemPrompt.assemble()
-      expect(prompt.sections.some(section => section.name === 'tool:environment-policy')).toBe(true)
+      const policySection = prompt.sections.find(section => section.name === 'tool:environment-policy')
+      expect(policySection?.text).toContain('Never use a storage basename such as full.md as the visible source name')
+      expect(policySection?.text).toContain('do not add a retrieval-diagnostics section')
+      expect(policySection?.text).toContain('Discuss temporal uncertainty only when the question asks')
 
       const result = await ctx.tools.execute({
         name: 'policy_search',
