@@ -312,6 +312,8 @@
       "@deepseek-ai/dsh-sdk-jsonrpc-server": ["./packages/sdk/server/src"],
       "@deepseek-ai/dsh-experimental-agent-team": ["./packages/experimental/agent-team/src"],
       "@deepseek-ai/dsh-experimental-auto-review": ["./packages/experimental/auto-review/src"],
+      "@deepseek-ai/dsh-experimental-environment-policy": ["./packages/experimental/environment-policy/src"],
+      "@deepseek-ai/dsh-experimental-environment-policy/tools": ["./packages/experimental/environment-policy/src/tools.ts"],
       "@deepseek-ai/dsh-experimental-agent-team-profile": ["./packages/experimental/agent-team-profile/src"],
       "@deepseek-ai/dsh-experimental-tool-agent-team": ["./packages/experimental/tool-agent-team/src"],
       "@deepseek-ai/dsh-experimental-webworker-runtime": ["./packages/experimental/webworker-runtime/src"],

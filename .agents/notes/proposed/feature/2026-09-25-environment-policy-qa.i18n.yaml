@@ -1,0 +1,100 @@
+# Bilingual-pair consistency record for 2026-09-25-environment-policy-qa.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-09-25-environment-policy-qa.md
+/agent-note-environment-policy-question-answering:
+  en: 991be3475dc7f260
+  zh: f28a084041c3a1ea
+/agent-note-environment-policy-question-answering/problem:
+  en: d65f6182bf2cef5f
+  zh: 347ed4d44a6d7db0
+/agent-note-environment-policy-question-answering/proposal:
+  en: b9f968a867cbb2ca
+  zh: 611cf155b79a223a
+/agent-note-environment-policy-question-answering/proposal/scope-of-the-first-release:
+  en: 23b42a11adda9e53
+  zh: b9fb451a9b38b08e
+/agent-note-environment-policy-question-answering/proposal/source-and-generated-data-boundary:
+  en: 1384b9fb57b0684f
+  zh: 9beda12d21784d54
+/agent-note-environment-policy-question-answering/proposal/import-and-document-model:
+  en: 789d93538dcf5097
+  zh: 218f1281e09ce366
+/agent-note-environment-policy-question-answering/proposal/description-generation:
+  en: 55e2ee25546c9f14
+  zh: ba2249af52453166
+/agent-note-environment-policy-question-answering/proposal/index-and-retrieval-order:
+  en: 557239eaacfcd05a
+  zh: 4241f20c52b3e445
+/agent-note-environment-policy-question-answering/proposal/harness-integration:
+  en: f6078410ac9760e1
+  zh: 0c20e2812365de2c
+/agent-note-environment-policy-question-answering/proposal/answer-contract:
+  en: 8b5c7ebb245b4717
+  zh: 77740a776b113b41
+/agent-note-environment-policy-question-answering/proposal/delivery-stages:
+  en: c65e9adb617a77f0
+  zh: 5e8b18336bcbdb95
+/agent-note-environment-policy-question-answering/concrete-implementation-steps:
+  en: 85ddf486cae93740
+  zh: 68e5f2c7c77adf6d
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-1-create-the-feature-branch-and-package-boundary:
+  en: 159ceab6b7dee2f4
+  zh: 149f15c0a8236f50
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-2-build-the-source-inventory:
+  en: 71c70b5cf27106a5
+  zh: c551b412d7dab811
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-3-implement-deterministic-markdown-structure-parsing:
+  en: 1cd65efe87531a37
+  zh: 98c810573f4a71fa
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-4-extract-document-and-version-metadata:
+  en: 86bbdac53656656c
+  zh: 112116dd04ca4b57
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-5-generate-and-review-descriptions:
+  en: 1f44990bcc9b43ed
+  zh: 2d6e7c78a593713d
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-6-create-the-sqlite-schema-and-rebuildable-indexes:
+  en: dd2f957eeeffabbf
+  zh: e669a0739a6bc9da
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-7-implement-the-query-planner-and-evidence-package:
+  en: 6610e50bef160777
+  zh: a5510acb287a6e74
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-8-register-the-harness-service-and-tools:
+  en: 11e153000b2863aa
+  zh: b63c58d612b67d88
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-9-build-the-evaluation-set-before-adding-vectors:
+  en: 103e1dcd90393519
+  zh: 0bbbcdc1d5c6ad80
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-10-add-vector-retrieval-only-when-the-evaluation-requires-it:
+  en: bb6460c2e0ba3ef5
+  zh: c1de66a6eaea188d
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-11-add-version-relations-and-comparison-after-basic-qa-is-stable:
+  en: 3ce4be06e729b35d
+  zh: aab1872218f6f4e4
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/step-12-full-import-release-checklist-and-update-cycle:
+  en: 0b8138be441c0e21
+  zh: 179f66bc11a31ac8
+/agent-note-environment-policy-question-answering/concrete-implementation-steps/git-and-verification:
+  en: 7106b01f3c87b489
+  zh: 3e33af7f81136823
+/agent-note-environment-policy-question-answering/alternatives-considered:
+  en: 6119e2aff3b6be5a
+  zh: 6119e2aff3b6be5a
+/agent-note-environment-policy-question-answering/alternatives-considered/why-not-prompt-only-retrieval:
+  en: 29ab448e2e1df1b8
+  zh: afa26019db636ca2
+/agent-note-environment-policy-question-answering/alternatives-considered/why-not-vector-only-retrieval:
+  en: 22c41630c491eeb5
+  zh: b2ff6d51333d2bf7
+/agent-note-environment-policy-question-answering/alternatives-considered/why-not-modify-the-agent-loop:
+  en: 51050de54cf6c7f5
+  zh: 966eea4d1e98f6e6
+/agent-note-environment-policy-question-answering/alternatives-considered/why-not-deploy-a-graph-and-vector-database-immediately:
+  en: 8216705258b4edb7
+  zh: 5d2582a56120884d
+/agent-note-environment-policy-question-answering/acceptance-criteria:
+  en: 9e63ff06a7e148ca
+  zh: 27123f4eceaa4bb0
+/agent-note-environment-policy-question-answering/risks:
+  en: dedfab9c72feee6f
+  zh: ec4d4bc0f96a7a3e

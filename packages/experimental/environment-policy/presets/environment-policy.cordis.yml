@@ -1,0 +1,17 @@
+# Optional group for an environment-policy Agent preset. Insert this group in
+# the preset's `config.plugins`; the repository's standard presets stay unchanged.
+- id: environment-policy
+  name: cordis:group
+  group: true
+  isolate:
+    environmentPolicyKnowledge: true
+  config:
+    - id: environment-policy-sqlite
+      name: '@deepseek-ai/dsh-experimental-environment-policy'
+      config:
+        path: ./policy-national-v1.sqlite
+    - id: tool-environment-policy
+      name: '@deepseek-ai/dsh-experimental-environment-policy/tools'
+      config:
+        maxResults: 8
+        maxEvidenceCharacters: 12000

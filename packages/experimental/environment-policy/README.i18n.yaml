@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/environment-policy/README.md
+/:
+  en: 31864e43344f8518
+  zh: bcd4772738f34cf3
+/deepseek-ai-dsh-experimental-environment-policy:
+  en: b02b0d0e71b2355b
+  zh: e4ee7ce276bb9db7
+/deepseek-ai-dsh-experimental-environment-policy/summary:
+  en: 900035f0386fc47b
+  zh: c36970b4ade72e0c
+/deepseek-ai-dsh-experimental-environment-policy/table-of-contents:
+  en: 60e0440b0483a59c
+  zh: 60e0440b0483a59c
+/deepseek-ai-dsh-experimental-environment-policy/use-this-package:
+  en: e34bb953949fac26
+  zh: 7bc261d4f5c95cd3
+/deepseek-ai-dsh-experimental-environment-policy/build-and-query-the-index:
+  en: 5ebdedb9f9ebbe07
+  zh: 0f6238529f4abe0b
+/deepseek-ai-dsh-experimental-environment-policy/offline-generation-and-review:
+  en: da9510f73108c404
+  zh: 530d05882b907160
+/deepseek-ai-dsh-experimental-environment-policy/understand-the-implementation:
+  en: 3b05de96570275dc
+  zh: f3da91aef25aea6e
+/deepseek-ai-dsh-experimental-environment-policy/further-exploration:
+  en: d3ebb2adc84fc449
+  zh: 204202292757d124
+/deepseek-ai-dsh-experimental-environment-policy/model-experience:
+  en: 65afc2362e2aca4c
+  zh: ee79085751bf6892
+/deepseek-ai-dsh-experimental-environment-policy/known-limitations-and-deferred-work:
+  en: 4b6a2878f5d6586c
+  zh: bf3000b2585cc1c3
+/deepseek-ai-dsh-experimental-environment-policy/known-limitations-and-deferred-work/dev-note:
+  en: b836f01bd0bceb4a
+  zh: b836f01bd0bceb4a

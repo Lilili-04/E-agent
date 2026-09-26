@@ -332,6 +332,7 @@
     { "path": "./packages/interaction/user-approval" },
     { "path": "./packages/interaction/permission-presets" },
     { "path": "./packages/experimental/auto-review" },
+    { "path": "./packages/experimental/environment-policy" },
     { "path": "./packages/core/tools" },
     { "path": "./packages/core/agent-tool-presentation" },
     { "path": "./packages/skill/skill" },
