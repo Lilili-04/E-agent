@@ -98,10 +98,10 @@ describe('environment-policy service and tool composition', () => {
       expect(ctx.tools.schemas().map(schema => schema.name)).toEqual(['policy_search'])
       const prompt = await ctx.systemPrompt.assemble()
       const policySection = prompt.sections.find(section => section.name === 'tool:environment-policy')
-      expect(policySection?.text).toContain('不要把 full.md、relativePath、recordKey、sourceId、sectionPath 等内部字段展示给用户')
+      expect(policySection?.text).toContain('不要把 full.md、relativePath、recordKey、sourceId、sectionPath、officialUrl 等内部字段展示给用户')
       expect(policySection?.text).toContain('不要把回答写成检索报告')
       expect(policySection?.text).toContain('只有用户明确要求比较、判断或分析时')
-      expect(policySection?.text).toContain('没有 officialUrl 时只显示普通文本，绝不编造链接')
+      expect(policySection?.text).toContain('来源暂时只显示普通文本，不生成任何超链接')
       expect(policySection?.text).toContain('法规清单按不同文档标题去重、归类')
 
       const result = await ctx.tools.execute({
@@ -123,6 +123,7 @@ describe('environment-policy service and tool composition', () => {
       expect(parsed.results[0]?.text).toContain('防治水污染')
       expect(parsed.results[0]).not.toHaveProperty('relativePath')
       expect(parsed.results[0]).not.toHaveProperty('recordKey')
+      expect(parsed.results[0]).not.toHaveProperty('officialUrl')
       expect(parsed.results[0]).not.toHaveProperty('reviewStatus')
       expect(parsed.results[0]).not.toHaveProperty('temporalAssessment')
       await toolFiber.dispose()
