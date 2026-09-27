@@ -62,7 +62,6 @@ export interface PolicyQueryHit {
   readonly reportedLegalStatus?: string
   readonly reviewStatus: PolicyReviewStatus
   readonly temporal: PolicyTemporalFacts
-  readonly officialUrl?: string
   readonly unitId: string
   readonly kind: string
   readonly label?: string
@@ -133,7 +132,6 @@ export interface PolicyEvidenceResult {
   readonly reviewStatus: PolicyReviewStatus
   readonly temporal: PolicyTemporalFacts
   readonly temporalAssessment: PolicyTemporalAssessment
-  readonly officialUrl?: string
   readonly unitId: string
   readonly kind: string
   readonly label?: string
@@ -436,7 +434,6 @@ function evidenceResult(value: RankedHit, remainingCharacters: number): PolicyEv
     reviewStatus: hit.reviewStatus,
     temporal: hit.temporal,
     temporalAssessment: value.temporalAssessment,
-    ...(hit.officialUrl === undefined ? {} : { officialUrl: hit.officialUrl }),
     unitId: hit.unitId,
     kind: hit.kind,
     ...(hit.label === undefined ? {} : { label: hit.label }),

@@ -24,19 +24,25 @@ function sha256(text: string): string {
   return createHash('sha256').update(text).digest('hex')
 }
 
-function policyDocument(): PolicyImportDocument {
-  const markdown = '# 中华人民共和国水污染防治法\n\n第一条 为了保护和改善环境，防治水污染，保护水生态，保障饮用水安全，维护公众健康。'
+function policyDocument(options: {
+  title?: string
+  publishDate?: string
+  relativePath?: string
+} = {}): PolicyImportDocument {
+  const title = options.title ?? '中华人民共和国水污染防治法'
+  const publishDate = options.publishDate ?? '2017-06-27'
+  const markdown = `# ${title}\n\n第一条 为了保护和改善环境，防治水污染，保护水生态，保障饮用水安全，维护公众健康。`
   const sourceId = `source-${sha256(markdown).slice(0, 24)}`
   const metadata: DocumentMetadata = {
     sourceId,
-    canonicalTitleCandidate: '中华人民共和国水污染防治法',
-    titleCandidates: ['中华人民共和国水污染防治法'],
-    regulationKeyCandidate: '中华人民共和国水污染防治法',
+    canonicalTitleCandidate: title,
+    titleCandidates: [title],
+    regulationKeyCandidate: title,
     documentType: 'law',
     jurisdictionCandidate: 'national',
     documentNumberCandidate: '主席令第七十号',
     aliases: [],
-    publishDateCandidate: '2017-06-27',
+    publishDateCandidate: publishDate,
     statusCandidate: '现行有效',
     legalStatus: '现行有效',
     dateCandidates: [],
@@ -48,10 +54,10 @@ function policyDocument(): PolicyImportDocument {
   return {
     source: {
       sourceId,
-      relativePath: 'laws/water/extracted/full.md',
+      relativePath: options.relativePath ?? 'laws/water/extracted/full.md',
       byteLength: Buffer.byteLength(markdown),
       sha256: sha256(markdown),
-      headingCandidates: ['中华人民共和国水污染防治法'],
+      headingCandidates: [title],
       quality: [],
     },
     markdown,
@@ -131,6 +137,63 @@ describe('environment-policy service and tool composition', () => {
       expect((await ctx.systemPrompt.assemble()).sections.some(
         section => section.name === 'tool:environment-policy',
       )).toBe(false)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('uses the latest matching version unless the question requests history', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'environment-policy-versions-'))
+    directories.push(directory)
+    const path = join(directory, 'policy.sqlite')
+    const database = new PolicyDatabase(path)
+    database.rebuild({
+      sourceRoot: join(directory, 'corpus'),
+      builtAt: '2026-09-26T00:00:00.000Z',
+      documents: [
+        policyDocument({ title: '城市绿化条例', publishDate: '2017-03-01', relativePath: '2017/full.md' }),
+        policyDocument({ title: '城市绿化条例', publishDate: '2026-01-30', relativePath: '2026/full.md' }),
+        policyDocument({ title: '城市绿化条例', publishDate: '1992-06-22', relativePath: '1992/full.md' }),
+      ],
+    })
+    database.close()
+
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(SqliteEnvironmentPolicyKnowledge, { path })
+      await ctx.plugin(PolicyTools, { maxResults: 8, maxEvidenceCharacters: 2_000 })
+
+      const latest = await ctx.tools.execute({
+        name: 'policy_search',
+        arguments: { question: '《城市绿化条例》第一条规定了什么？' },
+        callId: ToolCallId('policy-latest-version'),
+        signal: new AbortController().signal,
+      })
+      if (latest.isError) throw new Error(JSON.stringify(latest))
+      const latestOutput = latest.content.find(block => block.type === 'text')
+      if (latestOutput?.type !== 'text') throw new Error('missing latest-version output')
+      const latestParsed = JSON.parse(latestOutput.text) as { results: Array<Record<string, unknown>> }
+      expect(latestParsed.results).toHaveLength(1)
+      expect(latestParsed.results[0]).toMatchObject({ citationId: '1', publishDate: '2026-01-30' })
+
+      const history = await ctx.tools.execute({
+        name: 'policy_search',
+        arguments: { question: '《城市绿化条例》有哪些历史版本？' },
+        callId: ToolCallId('policy-history-versions'),
+        signal: new AbortController().signal,
+      })
+      if (history.isError) throw new Error(JSON.stringify(history))
+      const historyOutput = history.content.find(block => block.type === 'text')
+      if (historyOutput?.type !== 'text') throw new Error('missing history-version output')
+      const historyParsed = JSON.parse(historyOutput.text) as { results: Array<Record<string, unknown>> }
+      expect(historyParsed.results.map(item => item.citationId)).toEqual(['1', '2', '3'])
+      expect(historyParsed.results.map(item => item.publishDate).sort()).toEqual([
+        '1992-06-22',
+        '2017-03-01',
+        '2026-01-30',
+      ])
     } finally {
       await ctx.fiber.dispose()
     }

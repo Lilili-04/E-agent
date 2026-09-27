@@ -1,4 +1,4 @@
-/** Step9 deterministic retrieval evaluation cases. Keep expected titles human-readable; the runner resolves record keys from the fixed index. */
+/** Step9 deterministic retrieval cases with human-readable expected titles. */
 export interface EnvironmentPolicyEvaluationCase {
   readonly id: string
   readonly category: 'article' | 'topic' | 'date' | 'status' | 'history' | 'no-answer' | 'negative' | 'ocr'

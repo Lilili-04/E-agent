@@ -67,7 +67,6 @@ export interface PolicySourceRow {
   readonly publishDate?: string
   readonly effectiveFrom?: string
   readonly effectiveTo?: string
-  readonly officialUrl?: string
   readonly metadataStatus: DocumentMetadata['metadataStatus']
   readonly descriptionStatus?: PolicyDescription['status']
 }
@@ -128,7 +127,6 @@ interface SourceSqlRow {
   effective_from: string | null
   effective_to: string | null
   metadata_status: DocumentMetadata['metadataStatus']
-  metadata_json: string
   description_status: PolicyDescription['status'] | null
 }
 
@@ -183,7 +181,6 @@ function sqlSourceRow(row: Record<string, SQLOutputValue>): SourceSqlRow {
     effective_from: sqlNullableString(row, 'effective_from'),
     effective_to: sqlNullableString(row, 'effective_to'),
     metadata_status: sqlString(row, 'metadata_status') as DocumentMetadata['metadataStatus'],
-    metadata_json: sqlString(row, 'metadata_json'),
     description_status: status as PolicyDescription['status'] | null,
   }
 }
@@ -404,14 +401,6 @@ function jsonStrings(value: string): readonly string[] {
 }
 
 function sourceRow(row: SourceSqlRow): PolicySourceRow {
-  let officialUrl: string | undefined
-  try {
-    const metadata = JSON.parse(row.metadata_json) as { officialSourceUrls?: unknown[]; officialUrl?: unknown }
-    const candidate = metadata.officialUrl ?? metadata.officialSourceUrls?.[0]
-    if (typeof candidate === 'string' && candidate.length > 0) officialUrl = candidate
-  } catch {
-    officialUrl = undefined
-  }
   return {
     recordKey: row.record_key,
     sourceId: row.source_id,
@@ -425,7 +414,6 @@ function sourceRow(row: SourceSqlRow): PolicySourceRow {
     ...(row.publish_date === null ? {} : { publishDate: row.publish_date }),
     ...(row.effective_from === null ? {} : { effectiveFrom: row.effective_from }),
     ...(row.effective_to === null ? {} : { effectiveTo: row.effective_to }),
-    ...(officialUrl === undefined ? {} : { officialUrl }),
     metadataStatus: row.metadata_status,
     ...(row.description_status === null ? {} : { descriptionStatus: row.description_status }),
   }
@@ -640,7 +628,7 @@ export class PolicyDatabase {
     const rows = this.#database.prepare(`
       SELECT s.record_key, s.source_id, s.relative_path, s.source_hash,
         m.title, m.document_number, m.document_type, m.jurisdiction, m.legal_status, m.publish_date,
-        m.effective_from, m.effective_to, m.metadata_status, m.metadata_json,
+        m.effective_from, m.effective_to, m.metadata_status,
         d.status AS description_status
       FROM sources s JOIN metadata m ON m.record_key = s.record_key
       LEFT JOIN descriptions d ON d.record_key = s.record_key
@@ -678,7 +666,7 @@ export class PolicyDatabase {
       )
       SELECT s.record_key, s.source_id, s.relative_path, s.source_hash,
         m.title, m.document_number, m.document_type, m.jurisdiction, m.legal_status, m.publish_date,
-        m.effective_from, m.effective_to, m.metadata_status, m.metadata_json,
+        m.effective_from, m.effective_to, m.metadata_status,
         d.status AS description_status, u.unit_id, u.kind, u.label, u.line_start, u.line_end,
         u.section_path_json, u.text, COUNT(DISTINCT t.term) AS matched_terms,
         (SELECT COUNT(*) FROM content_search_terms AS length_terms
@@ -725,7 +713,7 @@ export class PolicyDatabase {
     const rows = this.#database.prepare(`
       SELECT s.record_key, s.source_id, s.relative_path, s.source_hash,
         m.title, m.document_number, m.document_type, m.jurisdiction, m.legal_status, m.publish_date,
-        m.effective_from, m.effective_to, m.metadata_status, m.metadata_json,
+        m.effective_from, m.effective_to, m.metadata_status,
         d.status AS description_status, u.unit_id, u.kind, u.label, u.line_start, u.line_end,
         u.section_path_json, u.text, 0 AS matched_terms, 0 AS document_length, '' AS matched_term_dfs
       FROM content_units u

@@ -12,29 +12,44 @@
   en: 900035f0386fc47b
   zh: c36970b4ade72e0c
 /deepseek-ai-dsh-experimental-environment-policy/table-of-contents:
-  en: 60e0440b0483a59c
-  zh: 60e0440b0483a59c
+  en: cd67398bcd1e317d
+  zh: cd67398bcd1e317d
 /deepseek-ai-dsh-experimental-environment-policy/use-this-package:
   en: e34bb953949fac26
   zh: 7bc261d4f5c95cd3
 /deepseek-ai-dsh-experimental-environment-policy/build-and-query-the-index:
-  en: 5ebdedb9f9ebbe07
-  zh: 0f6238529f4abe0b
+  en: 50928c5f8f4b78f9
+  zh: ec9a1d3607378b22
+/deepseek-ai-dsh-experimental-environment-policy/evaluation-baseline:
+  en: e80df9ec3cfdfaf5
+  zh: eb72cd4257f1815f
 /deepseek-ai-dsh-experimental-environment-policy/offline-generation-and-review:
   en: da9510f73108c404
   zh: 530d05882b907160
 /deepseek-ai-dsh-experimental-environment-policy/understand-the-implementation:
-  en: 3b05de96570275dc
-  zh: f3da91aef25aea6e
+  en: ebff5f8433356fa4
+  zh: 2a5bc76f549b4c7d
 /deepseek-ai-dsh-experimental-environment-policy/further-exploration:
   en: d3ebb2adc84fc449
   zh: 204202292757d124
 /deepseek-ai-dsh-experimental-environment-policy/model-experience:
-  en: 65afc2362e2aca4c
-  zh: ee79085751bf6892
+  en: 215e7ba838619b7b
+  zh: 215e7ba838619b7b
+/deepseek-ai-dsh-experimental-environment-policy/model-experience/policy-search-tool:
+  en: 104acc9630bf2af5
+  zh: 024eaae69afd9808
+/deepseek-ai-dsh-experimental-environment-policy/model-experience/policy-search-tool/what-the-model-sees:
+  en: b83cad48f922db84
+  zh: 9c5e66d2ef0c3972
+/deepseek-ai-dsh-experimental-environment-policy/model-experience/policy-search-tool/token-effect:
+  en: ebc905905e211980
+  zh: 16e5322643eff156
+/deepseek-ai-dsh-experimental-environment-policy/model-experience/policy-search-tool/kv-cache-effect:
+  en: fa4f3118829328fd
+  zh: 5619916e335688a8
 /deepseek-ai-dsh-experimental-environment-policy/known-limitations-and-deferred-work:
-  en: 4b6a2878f5d6586c
-  zh: bf3000b2585cc1c3
+  en: bfc4260a60fb4ad1
+  zh: b82fb7e0615a04cd
 /deepseek-ai-dsh-experimental-environment-policy/known-limitations-and-deferred-work/dev-note:
   en: b836f01bd0bceb4a
   zh: b836f01bd0bceb4a

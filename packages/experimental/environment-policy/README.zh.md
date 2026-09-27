@@ -17,6 +17,7 @@ kind: "package-plugin"
 - [Understand the implementation](#understand-the-implementation)
 - [Offline generation and review](#offline-generation-and-review)
 - [Build and query the index](#build-and-query-the-index)
+- [Evaluation baseline](#evaluation-baseline)
 - [Further Exploration](#further-exploration)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
@@ -94,9 +95,14 @@ node --experimental-strip-types scripts/environment-policy-build-index.ts
 
 数据库和构建清单是生成在 Git 仓库外的语料产物。全量重建使用单个事务。每次成功提交的清单都会记录 schema 版本、构建 ID、语料哈希、来源数量、内容单元数量和 description 数量。
 
-使用数据库路径挂载 `SqliteEnvironmentPolicyKnowledge`，再在仓库的工具服务和系统提示词服务之后挂载 `./tools` 导出。`policy_search` 接收自然语言问题和可选的 ISO `current_date`，返回本次查询使用的索引身份，以及带来源相对路径和行号的有限原文证据。description 可以帮助发现文档，但最终证据始终来自解析后的原文单元。
+使用数据库路径挂载 `SqliteEnvironmentPolicyKnowledge`，再在仓库的工具服务和系统提示词服务之后挂载 `./tools` 导出。查询服务会保留索引身份和原文位置，供内部核查使用。`policy_search` 接收自然语言问题和可选的 ISO `current_date`；面向模型的输出只包含有限原文和引用元数据，不包含内部路径或标识符。description 可以帮助发现文档，但最终证据始终来自解析后的原文单元。
 
 [`presets/environment-policy.cordis.yml`](presets/environment-policy.cordis.yml) 是可插入 Agent preset 的可选组合。使用时把数据库路径改为生成的索引位置。该组合隔离知识服务，不会修改标准 preset。
+
+<a id="evaluation-baseline"></a>
+## Evaluation baseline
+
+[`eval/cases.ts`](eval/cases.ts) 包含 90 个确定性检索问题，覆盖条款定位、主题发现、发布日期、目录效力状态、版本历史、无答案、否定词和 OCR 敏感场景。每个案例记录便于人工检查的期望文档标题，以及是否应返回权威证据。包测试固定案例数量、唯一标识和分类覆盖。在这套基线能够用于判断是否增加语义向量召回之前，Step 9 仍需补充固定索引运行器，并由人工核对期望内容单元 ID。
 
 <a id="offline-generation-and-review"></a>
 ## Offline generation and review
@@ -108,6 +114,8 @@ node --experimental-strip-types scripts/environment-policy-build-index.ts
 
 该库递归发现名为 `full.md` 的文件，计算字节哈希，提取候选标题，检查同目录 PDF，并记录质量标记。确定性的行规则保留标题、法规章节、条款、段落、列表、表格、附件、图片和代码块的原文位置。SQLite 保存来源、元数据、内容单元、description、引用、检索词和一份已提交的构建清单。查询层先应用精确元数据条件，再执行可移植的词法召回和 description 辅助召回，最后做确定性排序、证据限长和保守的时间状态判断。
 
+不发布运行时不变量伴随模块，因为不可变 SQLite 清单是唯一的运行时索引标识，本包没有可能与它分离的独立投影。
+
 <a id="further-exploration"></a>
 ## Further Exploration
 
@@ -117,15 +125,28 @@ node --experimental-strip-types scripts/environment-policy-build-index.ts
 <a id="model-experience"></a>
 ## Model Experience
 
-可选的 `./tools` 插件会注册 `policy_search` 和对应提示词段。检索在现有内容词项索引上使用 BM25 排序，同时保留元数据精确检索和 description 辅助发现。提示词要求模型先判断问题类型，再用不同方式回答：条款问题先用人话解释，法规清单按不同文档标题归并，缺少且会改变结论的信息只追问一个问题；引用使用文档标题、可选文号及条款、章节或行号，来源路径只作为链接目标或定位信息。普通回答不暴露检索字段，区分发布日期与生效日期，只在时效不确定性影响问题时说明，并报告语料缺口或证据截断。
+### 政策检索工具
+
+#### 模型看到什么
+
+可选的 `./tools` 插件会注册 `policy_search` 和对应提示词段。检索在现有内容词项索引上使用 BM25 排序，同时保留元数据精确检索和 description 辅助发现。除非问题明确询问历史或版本比较，工具会按规范化文档标题只保留发布日期最新的版本。面向模型的结果从一开始重新编号引用，移除路径和工作流字段，并要求模型在回答末尾生成纯文本编号来源。提示词要求条款问题先用通俗中文解释，询问效力时直接采用目录效力状态，区分发布日期和生效日期，并且不生成来源超链接。
+
+#### Token 影响
+
+可选组合的每次请求都包含固定提示词段和工具 schema。每次工具调用最多增加 `maxEvidenceCharacters` 个字符的有限证据，以及 `maxResults` 条记录。
+
+#### KV Cache 影响
+
+同一插件配置下的提示词段和工具 schema 保持稳定，因此可以留在可复用请求前缀中。检索结果和最终回答追加在此前缀之后；调整任一输出上限只改变配置，不改变固定的模型可见文本。
+
+## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
-## Known Limitations and Deferred Work
 
 - 元数据抽取只是第一版候选生成器，不确定法律效力、现行状态、废止关系或版本身份。清单中的效力状态会被保留，不会被 Markdown 中的猜测静默替换。
 - description 只是可审核的检索辅助信息，不能替代权威 Markdown、元数据字段或后续检索工具返回的证据。源文件哈希变化后，已有 description 会标记为 `stale`。
 - PDF 匹配目前只检查包含 `full.md` 的 `extracted` 目录；没有同目录 PDF 的来源会被标记。
-- 它不确定法律状态、生效日期或跨版本条款身份。即使目录标注文件有效，未经审核的时间元数据仍返回 `unconfirmed`。
+- 查询服务为内部调用者保留保守的时效评估字段；面向模型的工具不返回这些工作流字段，并在用户询问时使用目录中的效力状态。
 - 它不选择模型供应商，也不要求外部 API。调用方注入的适配器可以生成 description，包括通过子 agent 生成，但所有结果都必须经过本地引用、哈希、格式和状态校验。
 - 当前检索使用精确元数据条件、中文双字词、拉丁文字词项和 description 辅助召回，不要求向量数据库。后续只有在评测证明存在召回缺口时，才需要在查询存储接口后增加语义向量能力。
 

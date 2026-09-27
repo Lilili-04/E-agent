@@ -59,7 +59,6 @@ function queryHit(row: PolicyContentSearchHit): PolicyQueryHit {
     ...(row.jurisdiction === undefined ? {} : { jurisdiction: row.jurisdiction }),
     ...(row.publishDate === undefined ? {} : { publishDate: row.publishDate }),
     ...(row.legalStatus === undefined ? {} : { reportedLegalStatus: row.legalStatus }),
-    ...(row.officialUrl === undefined ? {} : { officialUrl: row.officialUrl }),
     reviewStatus: reviewStatus(row),
     temporal: {
       status: temporalStatus(row.legalStatus),

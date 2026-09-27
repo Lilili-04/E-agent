@@ -17,6 +17,7 @@ This package provides the experimental national environment-policy knowledge cap
 - [Understand the implementation](#understand-the-implementation)
 - [Offline generation and review](#offline-generation-and-review)
 - [Build and query the index](#build-and-query-the-index)
+- [Evaluation baseline](#evaluation-baseline)
 - [Further Exploration](#further-exploration)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
@@ -94,9 +95,14 @@ node --experimental-strip-types scripts/environment-policy-build-index.ts
 
 The output database and build manifest are generated corpus artifacts outside the Git repository. A rebuild is transactional. Each committed manifest records the schema version, build ID, corpus hash, source count, content-unit count, and description count.
 
-Mount `SqliteEnvironmentPolicyKnowledge` with the database path, then mount the `./tools` export after the repository tool and system-prompt services. `policy_search` accepts a natural-language question and an optional ISO `current_date`. It returns the exact index identity and bounded evidence with source-relative paths and line ranges. Description text can discover a document, but the returned evidence always comes from a parsed source unit.
+Mount `SqliteEnvironmentPolicyKnowledge` with the database path, then mount the `./tools` export after the repository tool and system-prompt services. The query service retains the exact index identity and source locations for internal verification. `policy_search` accepts a natural-language question and an optional ISO `current_date`; its model-facing output contains bounded source passages and citation metadata without internal paths or identifiers. Description text can discover a document, but the returned evidence always comes from a parsed source unit.
 
 [`presets/environment-policy.cordis.yml`](presets/environment-policy.cordis.yml) is an optional group to insert into an Agent preset. Set its database path to the generated index. The group isolates the knowledge service and leaves the standard presets unchanged.
+
+<a id="evaluation-baseline"></a>
+## Evaluation baseline
+
+[`eval/cases.ts`](eval/cases.ts) contains 90 deterministic retrieval questions across article lookup, topic discovery, publication date, reported legal status, version history, no-answer, negative, and OCR-sensitive categories. Each case records human-readable expected document titles and whether authoritative evidence should be returned. The package test fixes the case count, unique identifiers, and category coverage. A fixed-index runner and human verification of expected content-unit IDs remain Step 9 work before the baseline can justify adding semantic vector recall.
 
 <a id="offline-generation-and-review"></a>
 ## Offline generation and review
@@ -108,6 +114,8 @@ The package itself remains deterministic and model-agnostic. A caller may use a 
 
 The library discovers files named `full.md` recursively, hashes their bytes, extracts candidate headings, checks for a sibling PDF, and records quality flags. Deterministic line rules retain headings, legal sections, articles, paragraphs, lists, tables, attachments, images, and fenced blocks with source spans. SQLite stores sources, metadata, content units, descriptions, citations, search terms, and one committed build manifest. Query planning applies exact metadata filters first, then portable lexical and description-assisted recall, deterministic ranking, evidence limits, and conservative temporal assessment.
 
+No runtime invariant companion is published because the immutable SQLite manifest is the sole runtime index identity and the package maintains no independent projection that can diverge from it.
+
 <a id="further-exploration"></a>
 ## Further Exploration
 
@@ -117,15 +125,28 @@ The library discovers files named `full.md` recursively, hashes their bytes, ext
 <a id="model-experience"></a>
 ## Model Experience
 
-The optional `./tools` plugin registers `policy_search` and a prompt section. Retrieval uses BM25 scoring over the portable content-term index, with exact metadata lookup and description-assisted discovery. The prompt classifies the question before answering, uses plain-language explanations for clause questions, groups document-list questions by distinct title, asks one clarifying question only when missing context changes the result, labels citations with the document title, optional document number, and article, section, or line range, and retains the source path only as a link target or locator. It also keeps retrieval fields out of normal answers, distinguishes publication dates from effective dates, discusses temporal uncertainty when it affects the question, and reports corpus gaps or truncation.
+### Policy search tool
+
+#### What the model sees
+
+The optional `./tools` plugin registers `policy_search` and a prompt section. Retrieval uses BM25 scoring over the portable content-term index, with exact metadata lookup and description-assisted discovery. Unless the question asks for history or comparison, the tool keeps the newest publication date for each normalized document title. Model-facing results renumber citations from one, omit paths and workflow fields, and instruct the model to end with a plain-text numbered source list. The prompt uses plain Chinese for clause explanations, applies catalog legal-status labels directly when asked, distinguishes publication and effective dates, and does not generate source hyperlinks.
+
+#### Token effect
+
+The fixed prompt section and tool schema are present on every request in the optional composition. Each tool call adds bounded evidence text up to `maxEvidenceCharacters` and at most `maxResults` records.
+
+#### KV Cache effect
+
+The prompt section and tool schema are stable for one plugin configuration, so they remain in the reusable request prefix. Search results and the resulting answer append after that prefix; changing either output bound changes configuration, not the fixed model-facing text.
+
+## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
-## Known Limitations and Deferred Work
 
 - Metadata extraction is a first-pass candidate generator; it does not establish legal validity, current effectiveness, repeal, or version identity. Catalog status is preserved as supplied and is not silently replaced by a Markdown guess.
 - Description generation is only a reviewable discovery aid. It cannot replace the authoritative Markdown, metadata fields, or evidence returned by later retrieval tools. A changed source hash marks a saved description `stale`.
 - PDF matching currently checks the `extracted` directory containing each `full.md`; a source without a sibling PDF receives a quality flag.
-- It does not establish legal status, effective dates, or cross-version clause identity. Unreviewed temporal metadata remains `unconfirmed`, even when the catalog reports that a document is effective.
+- The query service retains conservative temporal assessment fields for internal callers, while the model tool omits those workflow fields and reports catalog legal-status labels when asked.
 - It does not choose a model provider or require an external API. An injected adapter can generate descriptions, including through a child agent, but all outputs remain subject to local citation, hash, schema, and status validation.
 - Retrieval currently uses exact metadata predicates, Chinese bigrams, Latin terms, and description-assisted recall. It does not require a vector database, and semantic embeddings can be added later behind the query-store interface if evaluation shows a recall gap.
 
