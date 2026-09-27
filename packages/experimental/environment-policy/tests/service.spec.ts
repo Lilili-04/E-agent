@@ -101,6 +101,7 @@ describe('environment-policy service and tool composition', () => {
       expect(policySection?.text).toContain('不要把 full.md、relativePath、recordKey、sourceId、sectionPath 等内部字段展示给用户')
       expect(policySection?.text).toContain('不要把回答写成检索报告')
       expect(policySection?.text).toContain('只有用户明确要求比较、判断或分析时')
+      expect(policySection?.text).toContain('没有 officialUrl 时只显示普通文本，绝不编造链接')
       expect(policySection?.text).toContain('法规清单按不同文档标题去重、归类')
 
       const result = await ctx.tools.execute({
