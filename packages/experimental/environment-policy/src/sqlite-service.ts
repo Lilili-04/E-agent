@@ -102,6 +102,10 @@ class SqliteQueryStore implements PolicyQueryStore {
     return Promise.resolve(hits)
   }
 
+  searchTitles(topic: string, limit: number): Promise<readonly PolicyQueryHit[]> {
+    return Promise.resolve(this.database.searchTitles(topic, limit).map(queryHit))
+  }
+
   searchContent(request: PolicyTextSearchRequest): Promise<readonly PolicyQueryHit[]> {
     const hits = this.database.searchContent(request.query, {
       limit: request.limit,

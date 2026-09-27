@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { EnvironmentPolicySearchResult } from './service.ts'
-import type { PolicyEvidenceResult } from './query.ts'
+import { asksForHistory, type PolicyEvidenceResult } from './query.ts'
 
 /** Cordis plugin name used by Loader diagnostics. */
 export const name = 'tool-environment-policy'
@@ -32,6 +32,7 @@ const OUTPUT = {
 const PROMPT_TEXT = [
   '你是环境政策法规助手，服务于环境管理人员、企业人员、研究人员和普通用户。',
   '涉及国家级环境法律、法规、标准、规划、通知或政策文件时，先使用 policy_search，再根据返回的原文证据回答。',
+  '调用 policy_search 时，question 保留用户的原问题。若用户要求列举某主题的文件，另填 topic 为问题中明确出现的核心主题词；去掉“法”“法规”“有哪些”等问法词，不添加用户没说的领域或效力限制。例如“海洋法有哪些？”填 question 为原句、topic 为“海洋”；无法确定主题时省略 topic。',
   '先判断问题类型：条款解释、法规清单、主题查找、环境合规咨询、版本比较、时效查询或概念解释，并选择最合适的回答方式。',
   '问题清楚时直接回答；只有缺失信息会明显改变结论时，才追问一个最关键的问题，不要连续提出多个问题。',
   '条款解释先用通俗中文说明，再给出必要的原文依据；法规清单按不同文档标题去重、归类，并说明清单仅限当前本地语料；合规问题按主体、行为、条件和可能后果组织。',
@@ -45,13 +46,9 @@ const PROMPT_TEXT = [
   '不要向用户展示审核状态、时效评估状态、检索分数、命中渠道、内部 JSON 或检索诊断信息。没有结果或证据被截断时，用简短自然语言说明。',
 ].join(' ')
 
-function asksForHistory(question: string): boolean {
-  return /历史|历次|沿革|修订前|旧版|历年版本|版本比较|各版本|变化/u.test(question)
-}
-
 function normalizedDocumentTitle(title: string | undefined): string | undefined {
   if (title === undefined) return undefined
-  return title.replace(/[（(](?:19|20)\d{2}年?(?:修订版|修订|修正版|原始版|历史版)?[）)]/gu, '').replace(/\s+/gu, '').trim()
+  return title.replace(/[（(](?:19|20)\d{2}年?(?:修订|修正|原始|历史|初始|新|旧|版)*[）)]/gu, '').replace(/\s+/gu, '').trim()
 }
 
 function latestDocumentVersions(results: readonly PolicyEvidenceResult[]): readonly PolicyEvidenceResult[] {
@@ -112,6 +109,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     description: 'Search the local national environment-policy index and return bounded source passages with citation metadata.',
     parameters: {
       question: { type: 'string', required: true, description: 'Natural-language policy or regulation question.' },
+      topic: { type: 'string', description: 'For document-list questions, an explicit topic phrase copied from the user question, without words such as laws or which ones. Omit if unclear.' },
       current_date: { type: 'string', description: 'ISO date (YYYY-MM-DD) required when asking what is current or presently effective.' },
     },
     output: OUTPUT,
@@ -120,6 +118,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       const result = await ctx.environmentPolicyKnowledge.search(args.question, {
         maxResults,
         maxEvidenceCharacters,
+        ...(args.topic === undefined ? {} : { titleTopic: args.topic }),
         ...(args.current_date === undefined ? {} : { currentDate: args.current_date }),
       }, { signal: exec.signal })
       return JSON.stringify(publicSearchResult(result, args.question))

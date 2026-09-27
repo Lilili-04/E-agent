@@ -29,6 +29,7 @@ function hit(overrides: Partial<PolicyQueryHit> = {}): PolicyQueryHit {
 
 class Store implements PolicyQueryStore {
   readonly exactRequests: PolicyExactSearchRequest[] = []
+  readonly titleRequests: Array<{ topic: string; limit: number }> = []
   readonly contentRequests: PolicyTextSearchRequest[] = []
   readonly descriptionRequests: PolicyDescriptionSearchRequest[] = []
 
@@ -37,11 +38,17 @@ class Store implements PolicyQueryStore {
     private readonly contentHits: readonly PolicyQueryHit[] = [],
     private readonly descriptionHits: readonly { readonly recordKey: string; readonly score: number }[] = [],
     private readonly hydratedHits: readonly PolicyQueryHit[] = [],
+    private readonly titleHits: readonly PolicyQueryHit[] = [],
   ) {}
 
   async findExact(request: PolicyExactSearchRequest): Promise<readonly PolicyQueryHit[]> {
     this.exactRequests.push(request)
     return this.exactHits
+  }
+
+  async searchTitles(topic: string, limit: number): Promise<readonly PolicyQueryHit[]> {
+    this.titleRequests.push({ topic, limit })
+    return this.titleHits
   }
 
   async searchContent(request: PolicyTextSearchRequest): Promise<readonly PolicyQueryHit[]> {
@@ -87,6 +94,32 @@ describe('environment-policy query planning', () => {
 })
 
 describe('environment-policy evidence query', () => {
+  it('prioritizes user-supplied title topics for document lists and ignores invented topics', async () => {
+    const marine = hit({ recordKey: 'marine', title: '中华人民共和国海洋环境保护法', score: 0 })
+    const unrelated = hit({ recordKey: 'energy', title: '中华人民共和国节约能源法', score: 20 })
+    const store = new Store([], [unrelated], [], [], [marine])
+    const evidence = await queryPolicies(store, '海洋法有哪些？', { titleTopic: '海洋' })
+    expect(store.titleRequests).toHaveLength(1)
+    expect(store.titleRequests[0]?.topic).toBe('海洋')
+    expect(evidence.results.map(result => result.title)).toEqual([
+      '中华人民共和国海洋环境保护法',
+      '中华人民共和国节约能源法',
+    ])
+    expect(evidence.results[0]?.matchReasons).toContain('title-topic')
+
+    await queryPolicies(store, '海洋法有哪些？', { titleTopic: '大气' })
+    expect(store.titleRequests).toHaveLength(1)
+  })
+
+  it('keeps separate records for an explicit history question', async () => {
+    const store = new Store([], [
+      hit({ recordKey: 'version-2017', title: '城市绿化条例', publishDate: '2017-03-01' }),
+      hit({ recordKey: 'version-2026', title: '城市绿化条例', publishDate: '2026-01-30' }),
+    ])
+    const evidence = await queryPolicies(store, '城市绿化条例有哪些历史版本？')
+    expect(evidence.results.map(result => result.recordKey)).toEqual(['version-2017', 'version-2026'])
+  })
+
   it('returns exact authoritative evidence with stable ids and bounded text', async () => {
     const store = new Store([hit()])
     const bundle = await queryPolicies(store, '《中华人民共和国环境保护法》主席令第九号第二十五条当前是否有效', {

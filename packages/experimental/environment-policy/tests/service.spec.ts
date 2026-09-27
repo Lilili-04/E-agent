@@ -109,6 +109,8 @@ describe('environment-policy service and tool composition', () => {
       expect(policySection?.text).toContain('只有用户明确要求比较、判断或分析时')
       expect(policySection?.text).toContain('来源暂时只显示普通文本，不生成任何超链接')
       expect(policySection?.text).toContain('法规清单按不同文档标题去重、归类')
+      expect(policySection?.text).toContain('question 保留用户的原问题')
+      expect(ctx.tools.schemas()[0]?.parameters).toHaveProperty('properties.topic')
 
       const result = await ctx.tools.execute({
         name: 'policy_search',
@@ -194,6 +196,45 @@ describe('environment-policy service and tool composition', () => {
         '2017-03-01',
         '2026-01-30',
       ])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('uses a model-supplied title topic to find documents whose body omits the topic', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'environment-policy-topic-'))
+    directories.push(directory)
+    const path = join(directory, 'policy.sqlite')
+    const database = new PolicyDatabase(path)
+    database.rebuild({
+      sourceRoot: join(directory, 'corpus'),
+      builtAt: '2026-09-26T00:00:00.000Z',
+      documents: [
+        policyDocument({ title: '中华人民共和国海洋环境保护法', publishDate: '2023-10-24', relativePath: 'marine/full.md' }),
+        policyDocument({ title: '中华人民共和国海洋环境保护法（2017年修正历史版）', publishDate: '2017-11-04', relativePath: 'marine-2017/full.md' }),
+        policyDocument({ title: '中华人民共和国节约能源法', relativePath: 'energy/full.md' }),
+      ],
+    })
+    database.close()
+
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(SqliteEnvironmentPolicyKnowledge, { path })
+      await ctx.plugin(PolicyTools)
+      const result = await ctx.tools.execute({
+        name: 'policy_search',
+        arguments: { question: '海洋法有哪些？', topic: '海洋' },
+        callId: ToolCallId('policy-topic'),
+        signal: new AbortController().signal,
+      })
+      if (result.isError) throw new Error(JSON.stringify(result))
+      const output = result.content.find(block => block.type === 'text')
+      if (output?.type !== 'text') throw new Error('missing topic search output')
+      const parsed = JSON.parse(output.text) as { results: Array<Record<string, unknown>> }
+      expect(parsed.results).toHaveLength(1)
+      expect(parsed.results[0]).toMatchObject({ title: '中华人民共和国海洋环境保护法', citationId: '1' })
     } finally {
       await ctx.fiber.dispose()
     }

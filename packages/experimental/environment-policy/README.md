@@ -129,11 +129,11 @@ No runtime invariant companion is published because the immutable SQLite manifes
 
 #### What the model sees
 
-The optional `./tools` plugin registers `policy_search` and a prompt section. Retrieval uses BM25 scoring over the portable content-term index, with exact metadata lookup and description-assisted discovery. Unless the question asks for history or comparison, the tool keeps the newest publication date for each normalized document title. Model-facing results renumber citations from one, omit paths and workflow fields, and instruct the model to end with a plain-text numbered source list. The prompt uses plain Chinese for clause explanations, applies catalog legal-status labels directly when asked, distinguishes publication and effective dates, and does not generate source hyperlinks.
+The optional `./tools` plugin registers `policy_search` and a prompt section. For a document-list question, the model may supply a `topic` copied from the original question; the tool uses it to recall titles and retains the original question for filters and BM25 content and description search. Topics absent from the question are ignored, and ordinary retrieval remains available when no topic is supplied. Unless the question asks for history or comparison, the tool keeps the newest publication date for each normalized document title. Model-facing results renumber citations from one, omit paths and workflow fields, and instruct the model to end with a plain-text numbered source list. The prompt uses plain Chinese for clause explanations, applies catalog legal-status labels directly when asked, distinguishes publication and effective dates, and does not generate source hyperlinks.
 
 #### Token effect
 
-The fixed prompt section and tool schema are present on every request in the optional composition. Each tool call adds bounded evidence text up to `maxEvidenceCharacters` and at most `maxResults` records.
+The fixed prompt section and tool schema are present on every request in the optional composition. The optional `topic` is generated in the existing tool-selection model request and adds no model round trip. Each tool call adds bounded evidence text up to `maxEvidenceCharacters` and at most `maxResults` records.
 
 #### KV Cache effect
 

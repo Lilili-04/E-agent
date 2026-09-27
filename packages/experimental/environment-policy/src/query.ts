@@ -38,6 +38,8 @@ export interface PolicyQueryPlan {
 export interface PolicyQueryPlanningOptions {
   readonly currentDate?: string
   readonly filters?: Partial<PolicyQueryFilters>
+  /** Topic copied from a document-list question for title-based recall. */
+  readonly titleTopic?: string
 }
 
 /** Reviewed time facts associated with a searchable document version. */
@@ -102,6 +104,7 @@ export interface PolicyDescriptionSearchRequest {
 /** Minimal database-independent read interface required by the query service. */
 export interface PolicyQueryStore {
   findExact(request: PolicyExactSearchRequest): Promise<readonly PolicyQueryHit[]>
+  searchTitles(topic: string, limit: number): Promise<readonly PolicyQueryHit[]>
   searchContent(request: PolicyTextSearchRequest): Promise<readonly PolicyQueryHit[]>
   searchDescriptions(request: PolicyDescriptionSearchRequest): Promise<readonly PolicyDescriptionHit[]>
 }
@@ -112,6 +115,7 @@ export type PolicyMatchReason =
   | 'description'
   | 'document-number-exact'
   | 'full-text'
+  | 'title-topic'
   | 'title-exact'
 
 /** Conservative temporal assessment produced without interpreting raw status labels. */
@@ -190,6 +194,11 @@ const DOCUMENT_NUMBER_PATTERN = /(?:[A-Za-z\u4e00-\u9fff]{1,24}〔\d{4}〕\d+号
 const ARTICLE_PATTERN = /第[一二三四五六七八九十百千万零〇\d]+条/u
 const DATE_PATTERN = /(\d{4})(?:年|[./-])(\d{1,2})(?:月|[./-])(\d{1,2})日?/u
 const YEAR_PATTERN = /(?<!\d)(\d{4})年(?!\d)/u
+
+/** Whether the question asks to keep historical document versions. */
+export function asksForHistory(question: string): boolean {
+  return /历史|历次|沿革|修订前|旧版|历年版本|版本比较|各版本|变化/u.test(question)
+}
 
 function normalizeDate(year: string, month: string, day: string): string {
   return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
@@ -352,10 +361,11 @@ function temporalAssessment(hit: PolicyQueryHit, filter: PolicyDateFilter | unde
   return facts.status === 'effective' ? 'confirmed-effective' : 'unconfirmed'
 }
 
-function matchReasons(hit: PolicyQueryHit, plan: PolicyQueryPlan, channel: 'description' | 'exact' | 'full-text'): PolicyMatchReason[] {
+function matchReasons(hit: PolicyQueryHit, plan: PolicyQueryPlan, channel: 'description' | 'exact' | 'full-text' | 'title-topic'): PolicyMatchReason[] {
   const reasons: PolicyMatchReason[] = []
   if (channel === 'description') reasons.push('description')
   if (channel === 'full-text') reasons.push('full-text')
+  if (channel === 'title-topic') reasons.push('title-topic')
   const title = plan.filters.title
   if (title !== undefined
     && [hit.title, ...(hit.aliases ?? [])].some(value => value !== undefined && normalizeExact(value) === normalizeExact(title))) {
@@ -373,11 +383,11 @@ interface RankedHit {
   readonly temporalAssessment: PolicyTemporalAssessment
 }
 
-function ranked(hit: PolicyQueryHit, plan: PolicyQueryPlan, channel: 'description' | 'exact' | 'full-text', descriptionScore = 0): RankedHit | undefined {
+function ranked(hit: PolicyQueryHit, plan: PolicyQueryPlan, channel: 'description' | 'exact' | 'full-text' | 'title-topic', descriptionScore = 0): RankedHit | undefined {
   if (!satisfiesFilters(hit, plan.filters)) return undefined
   const assessment = temporalAssessment(hit, plan.filters.date)
   if (assessment === 'exclude') return undefined
-  const base = channel === 'exact' ? 100 : channel === 'full-text' ? 50 : 20
+  const base = channel === 'exact' ? 100 : channel === 'title-topic' ? 80 : channel === 'full-text' ? 50 : 20
   const providerScore = Number.isFinite(hit.score) ? hit.score : 0
   return {
     hit,
@@ -463,8 +473,13 @@ export async function queryPolicies(
   const maxEvidenceCharacters = positiveInteger(options.maxEvidenceCharacters, DEFAULT_MAX_EVIDENCE_CHARACTERS, MAX_EVIDENCE_CHARACTERS, 'maxEvidenceCharacters')
   const plan = planPolicyQuery(question, options)
   const candidateLimit = Math.min(MAX_RESULTS, Math.max(maxResults * 4, 12))
-  const [exactHits, contentHits, descriptionHits] = await Promise.all([
+  const titleTopic = options.titleTopic?.trim()
+  const useTitleTopic = plan.intent === 'document-discovery'
+    && titleTopic !== undefined && titleTopic.length >= 2 && titleTopic.length <= 64
+    && question.includes(titleTopic)
+  const [exactHits, titleHits, contentHits, descriptionHits] = await Promise.all([
     plan.useExactRecall ? store.findExact({ plan, limit: candidateLimit }) : Promise.resolve([]),
+    useTitleTopic ? store.searchTitles(titleTopic, candidateLimit) : Promise.resolve([]),
     plan.useFullTextRecall ? store.searchContent({ query: plan.freeText, plan, limit: candidateLimit }) : Promise.resolve([]),
     plan.useDescriptionRecall ? store.searchDescriptions({ query: plan.freeText, plan, limit: candidateLimit }) : Promise.resolve([]),
   ])
@@ -479,11 +494,16 @@ export async function queryPolicies(
     })
   const rankedHits = mergeRanked([
     ...exactHits.map(hit => ranked(hit, plan, 'exact')).filter((value): value is RankedHit => value !== undefined),
+    ...titleHits.map(hit => ranked(hit, plan, 'title-topic')).filter((value): value is RankedHit => value !== undefined),
     ...contentHits.map(hit => ranked(hit, plan, 'full-text')).filter((value): value is RankedHit => value !== undefined),
     ...descriptionEvidence.map(hit => ranked(hit, plan, 'description', descriptionScores.get(hit.recordKey) ?? 0)).filter((value): value is RankedHit => value !== undefined),
   ])
-  const selectedHits = plan.intent === 'document-discovery'
-    ? [...new Map(rankedHits.map(value => [value.hit.recordKey, value])).values()]
+  const selectedHits = plan.intent === 'document-discovery' && !asksForHistory(question)
+    ? [...rankedHits.reduce((selected, value) => {
+      const key = value.hit.title ?? value.hit.recordKey
+      if (!selected.has(key)) selected.set(key, value)
+      return selected
+    }, new Map<string, RankedHit>()).values()]
     : rankedHits
   const results: PolicyEvidenceResult[] = []
   let returnedEvidenceCharacters = 0

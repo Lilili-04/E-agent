@@ -638,6 +638,43 @@ export class PolicyDatabase {
   }
 
   /**
+   * Find one source unit for each document whose title contains a topic.
+   * @param topic - explicit topic from the user's document-list question.
+   * @param limit - maximum number of matching documents.
+   * @returns source units scored by title brevity, with stable date and path order.
+   */
+  searchTitles(topic: string, limit = 20): readonly PolicyContentSearchHit[] {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('environment-policy database: title search limit must be between 1 and 200')
+    const rows = this.#database.prepare(`
+      SELECT s.record_key, s.source_id, s.relative_path, s.source_hash,
+        m.title, m.document_number, m.document_type, m.jurisdiction, m.legal_status, m.publish_date,
+        m.effective_from, m.effective_to, m.metadata_status,
+        d.status AS description_status, u.unit_id, u.kind, u.label, u.line_start, u.line_end,
+        u.section_path_json, u.text, 0 AS matched_terms, 0 AS document_length, '' AS matched_term_dfs
+      FROM sources s JOIN metadata m ON m.record_key = s.record_key
+      JOIN content_units u ON u.record_key = s.record_key AND u.unit_id = (
+        SELECT first.unit_id FROM content_units first
+        WHERE first.record_key = s.record_key ORDER BY first.line_start, first.unit_id LIMIT 1
+      )
+      LEFT JOIN descriptions d ON d.record_key = s.record_key
+      WHERE instr(m.title, ?) > 0
+      ORDER BY m.publish_date DESC, s.relative_path
+      LIMIT ?
+    `).all(topic, limit).map(sqlSearchRow)
+    return rows.map(row => ({
+      ...sourceRow(row),
+      unitId: row.unit_id,
+      kind: row.kind,
+      ...(row.label === null ? {} : { label: row.label }),
+      lineStart: row.line_start,
+      lineEnd: row.line_end,
+      sectionPath: jsonStrings(row.section_path_json),
+      text: row.text,
+      score: Math.max(0, 100 - Array.from(row.title ?? '').length),
+    }))
+  }
+
+  /**
    * Search content units with BM25 scoring over a portable Latin-word and Chinese-bigram index.
    * @param query - lexical query text.
    * @param options - result limit and optional source restriction.
