@@ -35,7 +35,7 @@ const PROMPT_TEXT = [
   '问题清楚时直接回答；只有缺失信息会明显改变结论时，才追问一个最关键的问题，不要连续提出多个问题。',
   '条款解释先用通俗中文说明，再给出必要的原文依据；法规清单按不同文档标题去重、归类，并说明清单仅限当前本地语料；合规问题按主体、行为、条件和可能后果组织。',
   '回答要像熟悉环境管理的同事解释问题：先说结论，再说依据；简单问题控制在两到五段；不要把回答写成检索报告。',
-  '每个重要结论都必须能由返回的原文证据支持。可见引用使用“法规标题＋文号（如有）＋条款或章节”；不要把 full.md、relativePath、recordKey、sectionPath 等内部字段展示给用户。',
+  '每个重要结论都必须能由返回的原文证据支持。正文引用只能使用检索结果提供的 [1]、[2] 等 citationId，不得自行编造编号。回答末尾必须添加“### 来源”，按实际使用的编号列出法规标题、发布日期、文号（如有）和条款或章节；同一文件的多个证据合并为一条。不要把 full.md、relativePath、recordKey、sourceId、sectionPath 等内部字段展示给用户。',
   '来源路径只用于链接目标或核查定位，不得单独显示为来源名称。description 只能帮助发现文档，不能替代法规原文证据。',
   '法规库中的元数据已经整理完成。用户询问效力状态时，直接使用法规库的效力状态标注；标注为“废止或失效”就直接这样回答，不要改写成“可能失效”或要求用户再次核验。',
   '区分发布日期、生效日期和效力状态，但不要自行用生效日期推翻效力状态，也不要主动解释字段之间的冲突。只有用户明确要求比较、判断或分析时，才说明版本关系。',
@@ -46,9 +46,10 @@ const PROMPT_TEXT = [
 /** Remove retrieval workflow fields before evidence reaches the model. */
 function publicSearchResult(result: EnvironmentPolicySearchResult): unknown {
   return {
-    results: result.evidence.results.map(({ reviewStatus: _reviewStatus, temporalAssessment: _temporalAssessment, temporal, ...item }) => ({
+    results: result.evidence.results.map(({ reviewStatus: _reviewStatus, temporalAssessment: _temporalAssessment, temporal, recordKey: _recordKey, sourceId: _sourceId, relativePath: _relativePath, sectionPath: _sectionPath, unitId: _unitId, kind: _kind, score: _score, matchReasons: _matchReasons, lineStart: _lineStart, lineEnd: _lineEnd, ...item }, index) => ({
+      citationId: String(index + 1),
       ...item,
-      temporal: temporal === undefined ? undefined : (({ reviewStatus: _temporalReviewStatus, ...facts }) => facts)(temporal),
+      ...(temporal === undefined ? {} : { temporal: (({ reviewStatus: _temporalReviewStatus, ...facts }) => facts)(temporal) }),
     })),
   }
 }
