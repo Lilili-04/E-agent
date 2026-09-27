@@ -80,6 +80,10 @@ describe('environment-policy query planning', () => {
       role: 'as-of', from: '2026-09-26', to: '2026-09-26', current: true,
     })
   })
+
+  it('marks topic lists as document discovery queries', () => {
+    expect(planPolicyQuery('海洋有哪些法规？').intent).toBe('document-discovery')
+  })
 })
 
 describe('environment-policy evidence query', () => {

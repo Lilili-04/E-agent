@@ -33,6 +33,7 @@ const PROMPT_TEXT = [
   'Format each visible citation label from the evidence title, followed by the document number when present, and the article, section, or line range.',
   'Never use a storage basename such as full.md as the visible source name; retain relativePath only as the link target or source locator.',
   'Answer the requested question directly; do not add a retrieval-diagnostics section or expose internal JSON field names unless the user asks for them.',
+  'For questions asking what laws, regulations, or policies exist in a topic, group results by distinct document title and make clear that the list is limited to the local corpus.',
   'Treat publication date, effective date, and reported legal status as different fields.',
   'Discuss temporal uncertainty only when the question asks about current effect, validity, applicability, or versions, or when uncertainty materially changes the answer.',
   'Do not claim that a document is currently effective when temporalAssessment is unconfirmed.',

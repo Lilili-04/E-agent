@@ -26,7 +26,7 @@ export interface PolicyQueryFilters {
 /** A deterministic retrieval plan derived from one user question. */
 export interface PolicyQueryPlan {
   readonly question: string
-  readonly intent: 'comparison' | 'lookup' | 'temporal'
+  readonly intent: 'comparison' | 'document-discovery' | 'lookup' | 'temporal'
   readonly freeText: string
   readonly filters: PolicyQueryFilters
   readonly useExactRecall: boolean
@@ -302,7 +302,10 @@ export function planPolicyQuery(question: string, options: PolicyQueryPlanningOp
   const exact = filters.title !== undefined || filters.documentNumber !== undefined || filters.articleLabel !== undefined
   const intent = /对比|比较|区别|差异|修订前后|新旧/u.test(normalizedQuestion)
     ? 'comparison'
-    : filters.date?.role === 'as-of' ? 'temporal' : 'lookup'
+    : !filters.title && !filters.documentNumber && !filters.articleLabel
+        && /有哪些|有什么|列出|相关(?:的)?(?:法规|法律|政策|文件)/u.test(normalizedQuestion)
+      ? 'document-discovery'
+      : filters.date?.role === 'as-of' ? 'temporal' : 'lookup'
   return {
     question: normalizedQuestion,
     intent,
@@ -482,9 +485,12 @@ export async function queryPolicies(
     ...contentHits.map(hit => ranked(hit, plan, 'full-text')).filter((value): value is RankedHit => value !== undefined),
     ...descriptionEvidence.map(hit => ranked(hit, plan, 'description', descriptionScores.get(hit.recordKey) ?? 0)).filter((value): value is RankedHit => value !== undefined),
   ])
+  const selectedHits = plan.intent === 'document-discovery'
+    ? [...new Map(rankedHits.map(value => [value.hit.recordKey, value])).values()]
+    : rankedHits
   const results: PolicyEvidenceResult[] = []
   let returnedEvidenceCharacters = 0
-  for (const value of rankedHits) {
+  for (const value of selectedHits) {
     if (results.length >= maxResults || returnedEvidenceCharacters >= maxEvidenceCharacters) break
     const remaining = maxEvidenceCharacters - returnedEvidenceCharacters
     const result = evidenceResult(value, remaining)

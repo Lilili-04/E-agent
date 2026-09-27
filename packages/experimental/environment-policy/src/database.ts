@@ -139,6 +139,8 @@ interface SearchSqlRow extends SourceSqlRow {
   section_path_json: string
   text: string
   matched_terms: number
+  document_length: number
+  matched_term_dfs: string
 }
 
 function sqlString(row: Record<string, SQLOutputValue>, name: string): string {
@@ -194,7 +196,24 @@ function sqlSearchRow(row: Record<string, SQLOutputValue>): SearchSqlRow {
     section_path_json: sqlString(row, 'section_path_json'),
     text: sqlString(row, 'text'),
     matched_terms: sqlNumber(row, 'matched_terms'),
+    document_length: sqlNumber(row, 'document_length'),
+    matched_term_dfs: sqlString(row, 'matched_term_dfs'),
   }
+}
+
+function bm25Score(row: SearchSqlRow, totalUnits: number, averageLength: number): number {
+  const k1 = 1.2
+  const b = 0.75
+  const length = row.document_length
+  const normalization = k1 * (1 - b + b * length / Math.max(averageLength, 1))
+  return row.matched_term_dfs.split('|').reduce((score, item) => {
+    const separator = item.indexOf('=')
+    if (separator < 1) return score
+    const documentFrequency = Number(item.slice(separator + 1))
+    if (!Number.isFinite(documentFrequency) || documentFrequency < 1) return score
+    const idf = Math.log(1 + (totalUnits - documentFrequency + 0.5) / (documentFrequency + 0.5))
+    return score + idf * (k1 + 1) / (1 + normalization)
+  }, 0)
 }
 
 const SCHEMA = `
@@ -619,7 +638,7 @@ export class PolicyDatabase {
   }
 
   /**
-   * Search content units with a portable Latin-word and Chinese-bigram index.
+   * Search content units with BM25 scoring over a portable Latin-word and Chinese-bigram index.
    * @param query - lexical query text.
    * @param options - result limit and optional source restriction.
    * @returns ranked source content units.
@@ -632,23 +651,38 @@ export class PolicyDatabase {
     const recordKeys = [...new Set(options.recordKeys ?? [])]
     const termSlots = terms.map(() => '?').join(', ')
     const recordPredicate = recordKeys.length === 0 ? '' : `AND t.record_key IN (${recordKeys.map(() => '?').join(', ')})`
+    const totalUnits = sqlNumber(this.#database.prepare('SELECT COUNT(*) AS count FROM content_units').get() as Record<string, SQLOutputValue>, 'count')
+    const averageLength = sqlNumber(this.#database.prepare(`
+      SELECT AVG(term_count) AS average_length FROM (
+        SELECT COUNT(*) AS term_count FROM content_search_terms GROUP BY record_key, unit_id
+      )
+    `).get() as Record<string, SQLOutputValue>, 'average_length')
     const rows = this.#database.prepare(`
+      WITH term_stats AS (
+        SELECT term, COUNT(DISTINCT record_key || char(0) || unit_id) AS document_frequency
+        FROM content_search_terms
+        WHERE term IN (${termSlots})
+        GROUP BY term
+      )
       SELECT s.record_key, s.source_id, s.relative_path, s.source_hash,
         m.title, m.document_number, m.document_type, m.jurisdiction, m.legal_status, m.publish_date,
         m.effective_from, m.effective_to, m.metadata_status,
         d.status AS description_status, u.unit_id, u.kind, u.label, u.line_start, u.line_end,
-        u.section_path_json, u.text, COUNT(DISTINCT t.term) AS matched_terms
+        u.section_path_json, u.text, COUNT(DISTINCT t.term) AS matched_terms,
+        (SELECT COUNT(*) FROM content_search_terms AS length_terms
+         WHERE length_terms.record_key = t.record_key AND length_terms.unit_id = t.unit_id) AS document_length,
+        group_concat(t.term || '=' || term_stats.document_frequency, '|') AS matched_term_dfs
       FROM content_search_terms t
+      JOIN term_stats ON term_stats.term = t.term
       JOIN content_units u ON u.record_key = t.record_key AND u.unit_id = t.unit_id
       JOIN sources s ON s.record_key = t.record_key
       JOIN metadata m ON m.record_key = t.record_key
       LEFT JOIN descriptions d ON d.record_key = t.record_key
       WHERE t.term IN (${termSlots}) ${recordPredicate}
       GROUP BY t.record_key, t.unit_id
-      HAVING COUNT(DISTINCT t.term) = ?
       ORDER BY matched_terms DESC, s.relative_path, u.line_start
       LIMIT ?
-    `).all(...terms, ...recordKeys, terms.length, limit).map(sqlSearchRow)
+    `).all(...terms, ...terms, ...recordKeys, limit).map(sqlSearchRow)
     const normalizedQuery = normalizeSearchText(query).replace(/\s+/gu, '')
     return rows.map(row => ({
       ...sourceRow(row),
@@ -659,7 +693,7 @@ export class PolicyDatabase {
       lineEnd: row.line_end,
       sectionPath: jsonStrings(row.section_path_json),
       text: row.text,
-      score: row.matched_terms + (normalizeSearchText(row.text).replace(/\s+/gu, '').includes(normalizedQuery) ? 1 : 0),
+      score: bm25Score(row, totalUnits, averageLength) + (normalizeSearchText(row.text).replace(/\s+/gu, '').includes(normalizedQuery) ? 1 : 0),
     })).sort((left, right) => right.score - left.score
       || left.relativePath.localeCompare(right.relativePath)
       || left.lineStart - right.lineStart)
@@ -681,7 +715,7 @@ export class PolicyDatabase {
         m.title, m.document_number, m.document_type, m.jurisdiction, m.legal_status, m.publish_date,
         m.effective_from, m.effective_to, m.metadata_status,
         d.status AS description_status, u.unit_id, u.kind, u.label, u.line_start, u.line_end,
-        u.section_path_json, u.text, 0 AS matched_terms
+        u.section_path_json, u.text, 0 AS matched_terms, 0 AS document_length, '' AS matched_term_dfs
       FROM content_units u
       JOIN sources s ON s.record_key = u.record_key
       JOIN metadata m ON m.record_key = u.record_key
@@ -719,10 +753,9 @@ export class PolicyDatabase {
       FROM description_search_terms
       WHERE term IN (${slots})
       GROUP BY record_key
-      HAVING COUNT(DISTINCT term) = ?
       ORDER BY matched_terms DESC, record_key
       LIMIT ?
-    `).all(...terms, terms.length, limit)
+    `).all(...terms, limit)
     return rows.map(row => ({ recordKey: sqlString(row, 'record_key'), score: sqlNumber(row, 'matched_terms') }))
   }
 }

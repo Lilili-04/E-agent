@@ -117,7 +117,7 @@ node --experimental-strip-types scripts/environment-policy-build-index.ts
 <a id="model-experience"></a>
 ## Model Experience
 
-可选的 `./tools` 插件会注册 `policy_search` 和对应提示词段。提示词要求模型使用文档标题、可选文号及条款、章节或行号作为可见引用标签，来源路径只作为链接目标或定位信息。提示词还要求模型直接回答问题且不暴露检索字段，区分发布日期与生效日期，只在时效不确定性影响问题时说明，并报告语料缺口或证据截断。
+可选的 `./tools` 插件会注册 `policy_search` 和对应提示词段。检索在现有内容词项索引上使用 BM25 排序，同时保留元数据精确检索和 description 辅助发现。提示词要求模型使用文档标题、可选文号及条款、章节或行号作为可见引用标签，来源路径只作为链接目标或定位信息；对于“有哪些文件”的问题按不同文档标题归并，并说明清单仅限本地语料。提示词还要求模型直接回答问题且不暴露检索字段，区分发布日期与生效日期，只在时效不确定性影响问题时说明，并报告语料缺口或证据截断。
 
 <a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work

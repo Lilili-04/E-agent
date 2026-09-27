@@ -102,6 +102,7 @@ describe('environment-policy service and tool composition', () => {
       expect(policySection?.text).toContain('Never use a storage basename such as full.md as the visible source name')
       expect(policySection?.text).toContain('do not add a retrieval-diagnostics section')
       expect(policySection?.text).toContain('Discuss temporal uncertainty only when the question asks')
+      expect(policySection?.text).toContain('group results by distinct document title')
 
       const result = await ctx.tools.execute({
         name: 'policy_search',
