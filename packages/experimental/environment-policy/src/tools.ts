@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { EnvironmentPolicySearchResult } from './service.ts'
 
 /** Cordis plugin name used by Loader diagnostics. */
 export const name = 'tool-environment-policy'
@@ -34,12 +35,23 @@ const PROMPT_TEXT = [
   '问题清楚时直接回答；只有缺失信息会明显改变结论时，才追问一个最关键的问题，不要连续提出多个问题。',
   '条款解释先用通俗中文说明，再给出必要的原文依据；法规清单按不同文档标题去重、归类，并说明清单仅限当前本地语料；合规问题按主体、行为、条件和可能后果组织。',
   '回答要像熟悉环境管理的同事解释问题：先说结论，再说依据；简单问题控制在两到五段；不要把回答写成检索报告。',
-  '每个重要结论都必须能由返回的原文证据支持。可见引用使用“法规标题＋文号（如有）＋条款或章节”；不要把 full.md、relativePath、recordKey、sectionPath、pending-review 等内部字段展示给用户。',
+  '每个重要结论都必须能由返回的原文证据支持。可见引用使用“法规标题＋文号（如有）＋条款或章节”；不要把 full.md、relativePath、recordKey、sectionPath 等内部字段展示给用户。',
   '来源路径只用于链接目标或核查定位，不得单独显示为来源名称。description 只能帮助发现文档，不能替代法规原文证据。',
-  '区分发布日期、生效日期和报告中的效力状态。只有用户询问当前有效性、适用性、版本或时效会影响结论时，才重点说明时间不确定性。',
-  '当 temporalAssessment 未确认时，不得声称文件当前有效；证据不足时明确说当前本地语料无法确认，不要用常识补全文本。',
-  '没有结果或证据被截断时，用简短自然语言说明；不要输出检索分数、命中渠道、内部 JSON 或检索诊断信息，除非用户明确要求。',
+  '法规库中的元数据已经整理完成。用户询问效力状态时，直接使用法规库的效力状态标注；标注为“废止或失效”就直接这样回答，不要改写成“可能失效”或要求用户再次核验。',
+  '区分发布日期、生效日期和效力状态，但不要自行用生效日期推翻效力状态，也不要主动解释字段之间的冲突。只有用户明确要求比较、判断或分析时，才说明版本关系。',
+  '如果某份文件没有效力状态标注，除非用户明确询问该文件的效力，否则不要主动提及字段缺失。',
+  '不要向用户展示审核状态、时效评估状态、检索分数、命中渠道、内部 JSON 或检索诊断信息。没有结果或证据被截断时，用简短自然语言说明。',
 ].join(' ')
+
+/** Remove retrieval workflow fields before evidence reaches the model. */
+function publicSearchResult(result: EnvironmentPolicySearchResult): unknown {
+  return {
+    results: result.evidence.results.map(({ reviewStatus: _reviewStatus, temporalAssessment: _temporalAssessment, temporal, ...item }) => ({
+      ...item,
+      temporal: temporal === undefined ? undefined : (({ reviewStatus: _temporalReviewStatus, ...facts }) => facts)(temporal),
+    })),
+  }
+}
 
 /** Register national environment-policy retrieval and its model guidance. */
 export function apply(ctx: Context, config: Config = {}): void {
@@ -65,7 +77,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         maxEvidenceCharacters,
         ...(args.current_date === undefined ? {} : { currentDate: args.current_date }),
       }, { signal: exec.signal })
-      return JSON.stringify(result)
+      return JSON.stringify(publicSearchResult(result))
     },
     presentCall: args => ({
       card: 'generic',

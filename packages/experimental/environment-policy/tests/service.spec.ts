@@ -12,7 +12,6 @@ import { PolicyDatabase, type PolicyImportDocument } from '../src/database.ts'
 import type { DocumentMetadata } from '../src/metadata.ts'
 import { parsePolicyMarkdown } from '../src/parse.ts'
 import SqliteEnvironmentPolicyKnowledge from '../src/sqlite-service.ts'
-import type { EnvironmentPolicySearchResult } from '../src/service.ts'
 import * as PolicyTools from '../src/tools.ts'
 
 const directories: string[] = []
@@ -99,9 +98,9 @@ describe('environment-policy service and tool composition', () => {
       expect(ctx.tools.schemas().map(schema => schema.name)).toEqual(['policy_search'])
       const prompt = await ctx.systemPrompt.assemble()
       const policySection = prompt.sections.find(section => section.name === 'tool:environment-policy')
-      expect(policySection?.text).toContain('不要把 full.md、relativePath、recordKey、sectionPath、pending-review 等内部字段展示给用户')
+      expect(policySection?.text).toContain('不要把 full.md、relativePath、recordKey、sectionPath 等内部字段展示给用户')
       expect(policySection?.text).toContain('不要把回答写成检索报告')
-      expect(policySection?.text).toContain('只有用户询问当前有效性、适用性、版本或时效会影响结论时')
+      expect(policySection?.text).toContain('只有用户明确要求比较、判断或分析时')
       expect(policySection?.text).toContain('法规清单按不同文档标题去重、归类')
 
       const result = await ctx.tools.execute({
@@ -114,14 +113,15 @@ describe('environment-policy service and tool composition', () => {
       expect(result.isError).toBe(false)
       const output = result.content.find(block => block.type === 'text')
       if (output?.type !== 'text') throw new Error('missing policy tool text output')
-      const parsed = JSON.parse(output.text) as EnvironmentPolicySearchResult
-      expect(parsed.index).toMatchObject({ sourceCount: 1 })
-      expect(parsed.evidence.results[0]).toMatchObject({
+      const parsed = JSON.parse(output.text) as { results: Array<Record<string, unknown>> }
+      expect(parsed.results).toHaveLength(1)
+      expect(parsed.results[0]).toMatchObject({
         relativePath: 'laws/water/extracted/full.md',
         label: '第一条',
-        temporalAssessment: 'not-requested',
       })
-      expect(parsed.evidence.results[0].text).toContain('防治水污染')
+      expect(parsed.results[0]?.text).toContain('防治水污染')
+      expect(parsed.results[0]).not.toHaveProperty('reviewStatus')
+      expect(parsed.results[0]).not.toHaveProperty('temporalAssessment')
       await toolFiber.dispose()
       expect(ctx.tools.schemas()).toEqual([])
       expect((await ctx.systemPrompt.assemble()).sections.some(
