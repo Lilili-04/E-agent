@@ -117,7 +117,7 @@ The library discovers files named `full.md` recursively, hashes their bytes, ext
 <a id="model-experience"></a>
 ## Model Experience
 
-The optional `./tools` plugin registers `policy_search` and a prompt section. Retrieval uses BM25 scoring over the portable content-term index, with exact metadata lookup and description-assisted discovery. The prompt tells the model to label citations with the document title, optional document number, and article, section, or line range while retaining the source path only as a link target or locator. It also tells the model to answer the requested question without exposing retrieval fields, group document-list questions by distinct title, distinguish publication dates from effective dates, discuss temporal uncertainty when it affects the question, and report corpus gaps or truncation.
+The optional `./tools` plugin registers `policy_search` and a prompt section. Retrieval uses BM25 scoring over the portable content-term index, with exact metadata lookup and description-assisted discovery. The prompt classifies the question before answering, uses plain-language explanations for clause questions, groups document-list questions by distinct title, asks one clarifying question only when missing context changes the result, labels citations with the document title, optional document number, and article, section, or line range, and retains the source path only as a link target or locator. It also keeps retrieval fields out of normal answers, distinguishes publication dates from effective dates, discusses temporal uncertainty when it affects the question, and reports corpus gaps or truncation.
 
 <a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
