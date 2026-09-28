@@ -93,11 +93,13 @@ Step6 构建脚本会把清单、元数据、description 和解析后的原文�
 node --experimental-strip-types scripts/environment-policy-build-index.ts
 ```
 
-数据库和构建清单是生成在 Git 仓库外的语料产物。全量重建使用单个事务。每次成功提交的清单都会记录 schema 版本、构建 ID、语料哈希、来源数量、内容单元数量和 description 数量。
+可选参数 `--source-root` 默认记录仓库相对路径 `data/policy_md/national`；从其他语料位置重建时，可以显式传入一个可移植的资料根目录标识。
+
+默认情况下，数据库和构建清单分别写入相对于仓库根目录的 `data/policy-national-v1.sqlite` 和 `data/policy-national-v1-manifest.json`。`data/` 下的 SQLite 文件属于本地生成的语料产物，已加入 Git 忽略；仓库保留 `data/README.md`，用于说明如何准备索引。全量重建使用单个事务。每次成功提交的清单都会记录 schema 版本、构建 ID、语料哈希、来源数量、内容单元数量和 description 数量。
 
 使用数据库路径挂载 `SqliteEnvironmentPolicyKnowledge`，再在仓库的工具服务和系统提示词服务之后挂载 `./tools` 导出。查询服务会保留索引身份和原文位置，供内部核查使用。`policy_search` 接收自然语言问题和可选的 ISO `current_date`；面向模型的输出只包含有限原文和引用元数据，不包含内部路径或标识符。description 可以帮助发现文档，但最终证据始终来自解析后的原文单元。
 
-[`presets/environment-policy.cordis.yml`](presets/environment-policy.cordis.yml) 是可插入 Agent preset 的可选组合。使用时把数据库路径改为生成的索引位置。该组合隔离知识服务，不会修改标准 preset。
+[`presets/environment-policy.cordis.yml`](presets/environment-policy.cordis.yml) 是可插入 Agent preset 的可选组合，默认使用仓库相对路径 `./data/policy-national-v1.sqlite`。请从仓库根目录启动 DSH；如果从其他目录启动，请显式传入数据库路径。该组合隔离知识服务，不会修改标准 preset。
 
 <a id="evaluation-baseline"></a>
 ## Evaluation baseline

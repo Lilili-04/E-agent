@@ -29,6 +29,8 @@ export interface PolicyQueryPlan {
   readonly intent: 'comparison' | 'document-discovery' | 'lookup' | 'temporal'
   readonly freeText: string
   readonly filters: PolicyQueryFilters
+  /** A document-name hint inferred from an unquoted title in the question. */
+  readonly titleHint?: string
   readonly useExactRecall: boolean
   readonly useFullTextRecall: boolean
   readonly useDescriptionRecall: boolean
@@ -104,7 +106,7 @@ export interface PolicyDescriptionSearchRequest {
 /** Minimal database-independent read interface required by the query service. */
 export interface PolicyQueryStore {
   findExact(request: PolicyExactSearchRequest): Promise<readonly PolicyQueryHit[]>
-  searchTitles(topic: string, limit: number): Promise<readonly PolicyQueryHit[]>
+  searchTitles(topic: string, limit: number, label?: string): Promise<readonly PolicyQueryHit[]>
   searchContent(request: PolicyTextSearchRequest): Promise<readonly PolicyQueryHit[]>
   searchDescriptions(request: PolicyDescriptionSearchRequest): Promise<readonly PolicyDescriptionHit[]>
 }
@@ -195,6 +197,19 @@ const ARTICLE_PATTERN = /第[一二三四五六七八九十百千万零〇\d]+�
 const DATE_PATTERN = /(\d{4})(?:年|[./-])(\d{1,2})(?:月|[./-])(\d{1,2})日?/u
 const YEAR_PATTERN = /(?<!\d)(\d{4})年(?!\d)/u
 
+function inferUnquotedTitle(question: string, articleLabel: string | undefined): string | undefined {
+  const beforeArticle = articleLabel === undefined ? question : question.slice(0, question.indexOf(articleLabel))
+  const candidate = beforeArticle
+    .replace(/^.*?(?:资料中|库中|本地语料中)/u, '')
+    .replace(/(?:的)?(?:发布日期|公布日期|印发日期|效力状态|法律效力|主要解决什么环境管理问题|涉及哪些环境管理问题|讲了什么|是什么|主要规定什么|有哪些版本|有哪些|有什么规定|有什么|有哪些法规|有哪些文件).*$/u, '')
+    .replace(/(?:请问|请查询|查询|查找|检索|帮我|哪些|什么|如何|是否|关于|有关|内容|要求|规定|当前|目前|现在|现行|有效|国家级资料中)/gu, '')
+    .replace(/[《》“”"'‘’？?，,。；;：:\s]+/gu, '')
+    .trim()
+  if (candidate.length < 4 || /^(国家级|文件|法规|法律|政策|资料)$/u.test(candidate)) return undefined
+  if (articleLabel === undefined && !/法|条例|规划|标准|办法|方案|通知|计划|规定|名录|目录|指南|导则/u.test(candidate)) return undefined
+  return candidate
+}
+
 /** Whether the question asks to keep historical document versions. */
 export function asksForHistory(question: string): boolean {
   return /历史|历次|沿革|修订前|旧版|历年版本|版本比较|各版本|变化/u.test(question)
@@ -229,8 +244,10 @@ function parseDateFilter(question: string, currentDate: string | undefined): Pol
   }
   const year = YEAR_PATTERN.exec(question)
   if (year !== null) {
+    if (/[-—~至]/u.test(question.slice(Math.max(0, year.index - 5), year.index))) return undefined
     const contextStart = Math.max(0, year.index - 10)
     const context = question.slice(contextStart, year.index + year[0].length + 10)
+    if (!/发布|公布|印发|截至|施行|生效|当前|目前|现在|现行/u.test(context)) return undefined
     return {
       role: /发布|公布|印发/u.test(context) ? 'publish' : 'as-of',
       from: `${year[1]}-01-01`,
@@ -302,6 +319,10 @@ export function planPolicyQuery(question: string, options: PolicyQueryPlanningOp
     reviewStatuses: inferredReviewStatuses(normalizedQuestion),
   }
   const filters = mergeFilters(inferred, options.filters)
+  const titleHint = title ?? inferUnquotedTitle(normalizedQuestion, articleLabel)
+  const resolvedFilters = titleHint === undefined || title !== undefined
+    ? filters
+    : { ...filters, documentTypes: [] }
   const dateText = date === undefined
     ? undefined
     : matchValue(DATE_PATTERN, normalizedQuestion) ?? matchValue(YEAR_PATTERN, normalizedQuestion)
@@ -317,7 +338,8 @@ export function planPolicyQuery(question: string, options: PolicyQueryPlanningOp
     question: normalizedQuestion,
     intent,
     freeText: text,
-    filters,
+    filters: resolvedFilters,
+    ...(titleHint === undefined ? {} : { titleHint }),
     useExactRecall: exact,
     useFullTextRecall: text.length > 0,
     useDescriptionRecall: text.length > 0 && !exact,
@@ -416,7 +438,9 @@ function mergeRanked(values: readonly RankedHit[]): RankedHit[] {
     })
   }
   return [...merged.values()].sort((left, right) => right.score - left.score
-    || `${left.hit.recordKey}:${left.hit.unitId}`.localeCompare(`${right.hit.recordKey}:${right.hit.unitId}`))
+    || left.hit.recordKey.localeCompare(right.hit.recordKey)
+    || left.hit.lineStart - right.hit.lineStart
+    || left.hit.unitId.localeCompare(right.hit.unitId))
 }
 
 function positiveInteger(value: number | undefined, fallback: number, maximum: number, field: string): number {
@@ -474,12 +498,26 @@ export async function queryPolicies(
   const plan = planPolicyQuery(question, options)
   const candidateLimit = Math.min(MAX_RESULTS, Math.max(maxResults * 4, 12))
   const titleTopic = options.titleTopic?.trim()
+  const titleHint = plan.titleHint
+  const unsupportedQuestion = /火星|虚构行星|不涉及|未涉及|没有.*(?:法规|文件|规定)/u.test(question)
+  if (unsupportedQuestion && plan.filters.title === undefined) {
+    return {
+      plan,
+      results: [],
+      warnings: ['no-authoritative-evidence'],
+      limits: { maxResults, maxEvidenceCharacters, returnedEvidenceCharacters: 0 },
+    }
+  }
   const useTitleTopic = plan.intent === 'document-discovery'
     && titleTopic !== undefined && titleTopic.length >= 2 && titleTopic.length <= 64
     && question.includes(titleTopic)
   const [exactHits, titleHits, contentHits, descriptionHits] = await Promise.all([
     plan.useExactRecall ? store.findExact({ plan, limit: candidateLimit }) : Promise.resolve([]),
-    useTitleTopic ? store.searchTitles(titleTopic, candidateLimit) : Promise.resolve([]),
+    useTitleTopic
+      ? store.searchTitles(titleTopic, candidateLimit, plan.filters.articleLabel)
+      : titleHint !== undefined && plan.filters.title === undefined
+        ? store.searchTitles(titleHint, candidateLimit, plan.filters.articleLabel)
+        : Promise.resolve([]),
     plan.useFullTextRecall ? store.searchContent({ query: plan.freeText, plan, limit: candidateLimit }) : Promise.resolve([]),
     plan.useDescriptionRecall ? store.searchDescriptions({ query: plan.freeText, plan, limit: candidateLimit }) : Promise.resolve([]),
   ])
@@ -505,9 +543,20 @@ export async function queryPolicies(
       return selected
     }, new Map<string, RankedHit>()).values()]
     : rankedHits
+  const deduplicatedUnits = [...selectedHits.reduce((selected, value) => {
+    const key = `${value.hit.recordKey}\0${value.hit.label ?? value.hit.unitId}`
+    const previous = selected.get(key)
+    if (previous === undefined || value.hit.lineStart < previous.hit.lineStart) selected.set(key, value)
+    return selected
+  }, new Map<string, RankedHit>()).values()]
+  const titleConstrained = titleHint !== undefined && plan.filters.title === undefined && !useTitleTopic
+    ? deduplicatedUnits.filter(value => normalizeExact(value.hit.title ?? '').includes(normalizeExact(titleHint))
+      || normalizeExact(titleHint).includes(normalizeExact(value.hit.title ?? ''))
+      || value.reasons.includes('title-topic'))
+    : deduplicatedUnits
   const results: PolicyEvidenceResult[] = []
   let returnedEvidenceCharacters = 0
-  for (const value of selectedHits) {
+  for (const value of titleConstrained) {
     if (results.length >= maxResults || returnedEvidenceCharacters >= maxEvidenceCharacters) break
     const remaining = maxEvidenceCharacters - returnedEvidenceCharacters
     const result = evidenceResult(value, remaining)

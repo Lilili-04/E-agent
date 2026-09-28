@@ -93,11 +93,13 @@ The Step6 build script joins inventory, metadata, descriptions, and parsed sourc
 node --experimental-strip-types scripts/environment-policy-build-index.ts
 ```
 
-The output database and build manifest are generated corpus artifacts outside the Git repository. A rebuild is transactional. Each committed manifest records the schema version, build ID, corpus hash, source count, content-unit count, and description count.
+The optional `--source-root` value defaults to the repository-relative `data/policy_md/national`; use it to record a different portable source-root label when rebuilding from another corpus location.
+
+By default the output database and build manifest are written to `data/policy-national-v1.sqlite` and `data/policy-national-v1-manifest.json`, relative to the repository root. SQLite files in `data/` are local generated corpus artifacts and are ignored by Git; keep the accompanying `data/README.md` so a clone documents how to provide the index. A rebuild is transactional. Each committed manifest records the schema version, build ID, corpus hash, source count, content-unit count, and description count.
 
 Mount `SqliteEnvironmentPolicyKnowledge` with the database path, then mount the `./tools` export after the repository tool and system-prompt services. The query service retains the exact index identity and source locations for internal verification. `policy_search` accepts a natural-language question and an optional ISO `current_date`; its model-facing output contains bounded source passages and citation metadata without internal paths or identifiers. Description text can discover a document, but the returned evidence always comes from a parsed source unit.
 
-[`presets/environment-policy.cordis.yml`](presets/environment-policy.cordis.yml) is an optional group to insert into an Agent preset. Set its database path to the generated index. The group isolates the knowledge service and leaves the standard presets unchanged.
+[`presets/environment-policy.cordis.yml`](presets/environment-policy.cordis.yml) is an optional group to insert into an Agent preset. It uses the repository-relative `./data/policy-national-v1.sqlite` path. Run DSH from the repository root, or pass an explicit path when launching from another directory. The group isolates the knowledge service and leaves the standard presets unchanged.
 
 <a id="evaluation-baseline"></a>
 ## Evaluation baseline

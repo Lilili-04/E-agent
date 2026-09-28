@@ -39,6 +39,9 @@ packages/**/__pycache__/
 apps/web/dist/
 .artifacts/
 .dsh-build/
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
 .playwright-mcp/
 .orig
 .worktrees/

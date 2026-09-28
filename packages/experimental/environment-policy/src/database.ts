@@ -643,7 +643,7 @@ export class PolicyDatabase {
    * @param limit - maximum number of matching documents.
    * @returns source units scored by title brevity, with stable date and path order.
    */
-  searchTitles(topic: string, limit = 20): readonly PolicyContentSearchHit[] {
+  searchTitles(topic: string, limit = 20, label?: string): readonly PolicyContentSearchHit[] {
     if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('environment-policy database: title search limit must be between 1 and 200')
     const rows = this.#database.prepare(`
       SELECT s.record_key, s.source_id, s.relative_path, s.source_hash,
@@ -654,13 +654,25 @@ export class PolicyDatabase {
       FROM sources s JOIN metadata m ON m.record_key = s.record_key
       JOIN content_units u ON u.record_key = s.record_key AND u.unit_id = (
         SELECT first.unit_id FROM content_units first
-        WHERE first.record_key = s.record_key ORDER BY first.line_start, first.unit_id LIMIT 1
+        WHERE first.record_key = s.record_key ${label === undefined ? '' : 'AND first.label = ?'}
+        ORDER BY first.line_start, first.unit_id LIMIT 1
       )
       LEFT JOIN descriptions d ON d.record_key = s.record_key
-      WHERE instr(m.title, ?) > 0
+      WHERE m.title IS NOT NULL
       ORDER BY m.publish_date DESC, s.relative_path
-      LIMIT ?
-    `).all(topic, limit).map(sqlSearchRow)
+    `).all(...(label === undefined ? [] : [label])).map(sqlSearchRow)
+    const normalizedTopic = topic.replace(/[《》“”"'‘’（）()\s]/gu, '')
+    if (normalizedTopic.length === 0) return []
+    const compact = (value: string): string => value.replace(/[《》“”"'‘’（）()\s]/gu, '')
+    const scoreTitle = (title: string): number => {
+      const value = compact(title)
+      if (value.includes(normalizedTopic)) return 1000 - value.length
+      const aliases = value.replace(/^中华人民共和国/u, '')
+      if (aliases.includes(normalizedTopic)) return 900 - value.length
+      const bigrams = [...new Set(Array.from(normalizedTopic).slice(0, -1).map((_, index) => normalizedTopic.slice(index, index + 2)))]
+      const matched = bigrams.filter(item => value.includes(item)).length
+      return matched >= 2 ? 500 + matched * 10 - value.length / 100 : -Infinity
+    }
     return rows.map(row => ({
       ...sourceRow(row),
       unitId: row.unit_id,
@@ -670,8 +682,10 @@ export class PolicyDatabase {
       lineEnd: row.line_end,
       sectionPath: jsonStrings(row.section_path_json),
       text: row.text,
-      score: Math.max(0, 100 - Array.from(row.title ?? '').length),
-    }))
+      score: scoreTitle(row.title ?? ''),
+    })).filter(row => Number.isFinite(row.score)).sort((left, right) => right.score - left.score
+      || (right.publishDate ?? '').localeCompare(left.publishDate ?? '')
+      || left.relativePath.localeCompare(right.relativePath)).slice(0, limit)
   }
 
   /**

@@ -28,8 +28,9 @@ async function json<T>(path: string): Promise<T> {
 const inventoryPath = resolve(argument('--inventory') ?? '../policy_inventory-national.json')
 const metadataPath = resolve(argument('--metadata') ?? '../policy_metadata-report-national-v2.json')
 const descriptionsPath = resolve(argument('--descriptions') ?? '../policy-descriptions-national-v1.json')
-const outputPath = resolve(argument('--output') ?? '../policy-national-v1.sqlite')
-const manifestPath = resolve(argument('--manifest') ?? '../policy-national-v1-manifest.json')
+const outputPath = resolve(argument('--output') ?? 'data/policy-national-v1.sqlite')
+const manifestPath = resolve(argument('--manifest') ?? 'data/policy-national-v1-manifest.json')
+const sourceRoot = argument('--source-root') ?? 'data/policy_md/national'
 
 const [inventory, metadata, descriptions] = await Promise.all([
   json<SourceInventory>(inventoryPath),
@@ -44,7 +45,7 @@ const documents = await loadPolicyImportDocuments({
 const database = new PolicyDatabase(outputPath)
 try {
   const manifest = database.rebuild({
-    sourceRoot: inventory.sourceRoot,
+    sourceRoot,
     builtAt: new Date().toISOString(),
     documents,
   })

@@ -9,7 +9,7 @@
     - id: environment-policy-sqlite
       name: '@deepseek-ai/dsh-experimental-environment-policy'
       config:
-        path: ./policy-national-v1.sqlite
+        path: ./data/policy-national-v1.sqlite
     - id: tool-environment-policy
       name: '@deepseek-ai/dsh-experimental-environment-policy/tools'
       config:
