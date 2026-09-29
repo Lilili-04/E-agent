@@ -2,33 +2,33 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
-/national-environmental-policy-q-a-system-built-on-dsh:
-  en: 7997c006c5f1f0f5
+/dsh:
+  en: f0eabd4462429003
   zh: 43b2f9cbb01eca00
-/national-environmental-policy-q-a-system-built-on-dsh/what-the-system-does:
-  en: b8c8b53c804eaacd
+/dsh/section:
+  en: b3394143ed1a287a
   zh: b3394143ed1a287a
-/national-environmental-policy-q-a-system-built-on-dsh/project-layout:
-  en: adc2993164c4f242
+/dsh/section~2:
+  en: 34c95daea88d6e46
   zh: 34c95daea88d6e46
-/national-environmental-policy-q-a-system-built-on-dsh/requirements:
-  en: 95b183727ffada29
+/dsh/section~3:
+  en: 5095525dd532dd83
   zh: a9b0279611465b8c
-/national-environmental-policy-q-a-system-built-on-dsh/run-locally:
-  en: 43296b4721544514
-  zh: 35699a4c7c09cb01
-/national-environmental-policy-q-a-system-built-on-dsh/build-or-replace-the-local-index:
-  en: 106aaef2625ab2b3
+/dsh/section~4:
+  en: 088ab1d0d5336d35
+  zh: 088ab1d0d5336d35
+/dsh/section~5:
+  en: 911dbbe48df78efa
   zh: 911dbbe48df78efa
-/national-environmental-policy-q-a-system-built-on-dsh/verify-the-implementation:
-  en: eafdbb778e026dbb
+/dsh/section~6:
+  en: 4419d9a60e46ea79
   zh: 4419d9a60e46ea79
-/national-environmental-policy-q-a-system-built-on-dsh/current-scope-and-limitations:
-  en: bebb87b63963a2a8
+/dsh/section~7:
+  en: 964c9297f6cc9ade
   zh: 964c9297f6cc9ade
-/national-environmental-policy-q-a-system-built-on-dsh/further-documentation:
-  en: 11b16559fbddea4d
+/dsh/section~8:
+  en: 2f6eeae8541a09f8
   zh: 2f6eeae8541a09f8
-/national-environmental-policy-q-a-system-built-on-dsh/license:
-  en: 926995344fc1c72b
+/dsh/section~9:
+  en: c92fab5abf85932f
   zh: c92fab5abf85932f

@@ -17,6 +17,7 @@ This package provides the experimental national environment-policy knowledge cap
 - [Understand the implementation](#understand-the-implementation)
 - [Offline generation and review](#offline-generation-and-review)
 - [Build and query the index](#build-and-query-the-index)
+- [Startup environment](#startup-environment)
 - [Evaluation baseline](#evaluation-baseline)
 - [Further Exploration](#further-exploration)
 - [Model Experience](#model-experience)
@@ -100,6 +101,11 @@ By default the output database and build manifest are written to `data/policy-na
 Mount `SqliteEnvironmentPolicyKnowledge` with the database path, then mount the `./tools` export after the repository tool and system-prompt services. The query service retains the exact index identity and source locations for internal verification. `policy_search` accepts a natural-language question and an optional ISO `current_date`; its model-facing output contains bounded source passages and citation metadata without internal paths or identifiers. Description text can discover a document, but the returned evidence always comes from a parsed source unit.
 
 [`presets/environment-policy.cordis.yml`](presets/environment-policy.cordis.yml) is an optional group to insert into an Agent preset. It uses the repository-relative `./data/policy-national-v1.sqlite` path. Run DSH from the repository root, or pass an explicit path when launching from another directory. The group isolates the knowledge service and leaves the standard presets unchanged.
+
+<a id="startup-environment"></a>
+### Startup environment
+
+Start DSH from the same interactive terminal used to install dependencies and build the workspace. Codex command execution uses a separate non-interactive shell, a managed Node runtime, and fallback pnpm. When `node_modules/.modules.yaml` is missing, pnpm rechecks the whole workspace and tries to install dependencies, which can make startup much slower. On a fresh or incomplete dependency tree, run `pnpm install --frozen-lockfile` once, confirm that dependency links are complete, and then use `pnpm run dev:web --skip-build --poll` or `pnpm run start:desktop -- --skip-build` when the build artifacts already exist.
 
 <a id="evaluation-baseline"></a>
 ## Evaluation baseline

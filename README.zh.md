@@ -46,6 +46,10 @@ pnpm run build
 pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open
 ```
 
+尽量在同一个交互式终端中完成依赖安装、构建和启动。Codex 命令使用独立的非交互 shell、托管 Node 运行时和 fallback pnpm；如果 `node_modules/.modules.yaml` 不存在，pnpm 可能会重新扫描并链接整个 workspace，导致启动明显变慢。首次使用或依赖目录不完整时，先运行 `pnpm install --frozen-lockfile`；构建产物已经存在后，直接启动服务，避免重复安装和构建。使用包说明中的开发脚本时，如果构建产物仍然有效，请加上 `--skip-build`。
+
+第二次及之后重启时，在仓库根目录只需要执行 `pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open`。只有依赖或影响构建的源文件发生变化时，才需要再次执行 `pnpm install` 或 `pnpm run build`。
+
 打开 DSH 输出的地址，通常是 `http://127.0.0.1:3080`。启动 overlay 会把环境政策 SQLite 服务和 `policy_search` 工具挂载到环境政策问答 preset 中。
 
 preset 使用仓库相对路径 `./data/policy-national-v1.sqlite`。请从仓库根目录启动 DSH，确保相对路径能够正确解析。

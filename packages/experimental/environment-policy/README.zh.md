@@ -17,6 +17,7 @@ kind: "package-plugin"
 - [Understand the implementation](#understand-the-implementation)
 - [Offline generation and review](#offline-generation-and-review)
 - [Build and query the index](#build-and-query-the-index)
+- [Startup environment](#startup-environment)
 - [Evaluation baseline](#evaluation-baseline)
 - [Further Exploration](#further-exploration)
 - [Model Experience](#model-experience)
@@ -100,6 +101,11 @@ node --experimental-strip-types scripts/environment-policy-build-index.ts
 使用数据库路径挂载 `SqliteEnvironmentPolicyKnowledge`，再在仓库的工具服务和系统提示词服务之后挂载 `./tools` 导出。查询服务会保留索引身份和原文位置，供内部核查使用。`policy_search` 接收自然语言问题和可选的 ISO `current_date`；面向模型的输出只包含有限原文和引用元数据，不包含内部路径或标识符。description 可以帮助发现文档，但最终证据始终来自解析后的原文单元。
 
 [`presets/environment-policy.cordis.yml`](presets/environment-policy.cordis.yml) 是可插入 Agent preset 的可选组合，默认使用仓库相对路径 `./data/policy-national-v1.sqlite`。请从仓库根目录启动 DSH；如果从其他目录启动，请显式传入数据库路径。该组合隔离知识服务，不会修改标准 preset。
+
+<a id="startup-environment"></a>
+### Startup environment
+
+启动 DSH 时，建议在同一个交互式终端中完成依赖安装、构建和启动。Codex 的命令执行使用独立的非交互 shell、托管 Node 运行时和 fallback pnpm；如果 `node_modules/.modules.yaml` 不存在，pnpm 会重新检查整个 workspace 并尝试安装依赖，启动时间可能明显增加。首次使用或依赖目录不完整时，先运行 `pnpm install --frozen-lockfile`，确认依赖链接完成，再按需使用 `pnpm run dev:web --skip-build --poll` 或 `pnpm run start:desktop -- --skip-build`。
 
 <a id="evaluation-baseline"></a>
 ## Evaluation baseline

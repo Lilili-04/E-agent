@@ -1,23 +1,23 @@
-# National Environmental Policy Q&A System Built on DSH
+# 基于 DSH 的国家级环境政策法规问答系统
 
 English | [中文](README.zh.md)
 
-This project is an environmental policy and regulation question-answering system built on the DeepSeek Harness (DSH) plugin architecture. It is designed for questions about national-level Chinese environmental laws, regulations, standards, plans, and policy documents.
+本项目基于 DeepSeek Harness（DSH）的插件架构，面向国家级中文环境政策法规、标准、规划和政策文件提供知识问答能力。
 
-The system retrieves evidence from a local SQLite index and uses the DSH agent to explain the answer in natural language. Retrieval and generation are separated: the model receives bounded source passages and citation metadata, while the index remains under local deployment control.
+系统从本地 SQLite 索引中检索证据，再由 DSH agent 用自然语言组织答案。检索和生成分开处理：模型只接收有限长度的原文证据和引用元数据，索引和语料由部署者在本地管理。
 
-## What the system does
+## 当前问答能力
 
-- Answers article-level questions such as “What does Article 1 of the Marine Environmental Protection Law provide?”
-- Finds documents by topic, including national regulations related to marine protection, water pollution, waste, and urban drainage.
-- Reports publication dates and the legal-status field recorded in the policy metadata.
-- Uses the latest version when history is not requested, and returns revision history when the user asks for it.
-- Uses exact title matching, metadata search, BM25 full-text retrieval, and bounded evidence selection.
-- Returns the document name, publication information, article or section location, and quoted source evidence.
+- 回答条款问题，例如“《中华人民共和国海洋环境保护法》第一条是什么？”
+- 按主题查找法规，例如查询海洋保护、水污染、固体废物、城市排水等相关国家级文件。
+- 查询元数据中记录的发布日期和效力状态。
+- 用户没有询问历史时优先使用最新版本；用户明确询问历史时再返回修订版本信息。
+- 结合标题精确匹配、元数据检索、BM25 全文检索和有限证据筛选。
+- 在答案中列出文件名、发布日期、条款或章节位置和原文证据。
 
-The current local index contains 494 national documents and 61,455 parsed content units. The index is a generated local artifact and is intentionally not uploaded to GitHub.
+当前本地索引包含 494 份国家级文件和 61,455 个解析后的正文单元。索引是生成的本地数据产物，出于体积和部署原因不会上传到 GitHub。
 
-## Project layout
+## 项目目录
 
 ```text
 packages/experimental/environment-policy/   Environment policy service, query planner, tools, and preset
@@ -27,18 +27,18 @@ data/policy-national-v1.sqlite              Local database, ignored by Git
 .dsh-build/environment-policy-web.patch.yml Local launch overlay, ignored by Git
 ```
 
-## Requirements
+## 运行环境
 
-- Windows, macOS, or Linux
-- Node.js 22.19 or newer
-- pnpm 11 or newer
-- A local `data/policy-national-v1.sqlite` index
+- Windows、macOS 或 Linux
+- Node.js 22.19 或更高版本
+- pnpm 11 或更高版本
+- 本地 `data/policy-national-v1.sqlite` 索引
 
-The database is not part of the repository because it is a large generated artifact. Put an existing index at `data/policy-national-v1.sqlite`, or rebuild it from the local corpus described in [data/README.md](data/README.md).
+数据库是体积较大的生成产物，不包含在仓库中。请把已有索引放在 `data/policy-national-v1.sqlite`，或者按照 [data/README.md](data/README.md) 使用本地语料重新构建。
 
-## Run locally
+## 本地启动
 
-From the repository root:
+在仓库根目录执行：
 
 ```powershell
 pnpm install
@@ -46,21 +46,25 @@ pnpm run build
 pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open
 ```
 
-Open the URL printed by DSH, normally `http://127.0.0.1:3080`. The launch overlay mounts the environment-policy SQLite service and the `policy_search` tool into an environment-policy agent preset.
+尽量在同一个交互式终端中完成依赖安装、构建和启动。Codex 命令使用独立的非交互 shell、托管 Node 运行时和 fallback pnpm；如果 `node_modules/.modules.yaml` 不存在，pnpm 可能会重新扫描并链接整个 workspace，导致启动明显变慢。首次使用或依赖目录不完整时，先运行 `pnpm install --frozen-lockfile`；构建产物已经存在后，直接启动服务，避免重复安装和构建。使用包说明中的开发脚本时，如果构建产物仍然有效，请加上 `--skip-build`。
 
-The preset uses the repository-relative database path `./data/policy-national-v1.sqlite`. Start DSH from the repository root so the path resolves correctly.
+第二次及之后重启时，在仓库根目录只需要执行 `pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open`。只有依赖或影响构建的源文件发生变化时，才需要再次执行 `pnpm install` 或 `pnpm run build`。
 
-## Build or replace the local index
+打开 DSH 输出的地址，通常是 `http://127.0.0.1:3080`。启动 overlay 会把环境政策 SQLite 服务和 `policy_search` 工具挂载到环境政策问答 preset 中。
 
-The default build command writes the database and manifest to `data/`:
+preset 使用仓库相对路径 `./data/policy-national-v1.sqlite`。请从仓库根目录启动 DSH，确保相对路径能够正确解析。
+
+## 构建或替换本地索引
+
+默认构建命令会把数据库和清单写入 `data/`：
 
 ```powershell
 node --experimental-strip-types scripts/environment-policy-build-index.ts
 ```
 
-Use `--inventory`, `--metadata`, `--descriptions`, `--output`, `--manifest`, and `--source-root` when the local corpus is stored elsewhere. The default recorded source-root label is `data/policy_md/national`, which keeps the generated manifest portable across machines.
+输入文件属于本地语料产物。如果文件位于其他位置，可以使用 `--inventory`、`--metadata`、`--descriptions`、`--output`、`--manifest` 和 `--source-root` 参数。默认记录的资料根目录标识为 `data/policy_md/national`，可避免把本机绝对路径写入生成清单。
 
-## Verify the implementation
+## 验证实现
 
 ```powershell
 node_modules/.bin/vitest.cmd run packages/experimental/environment-policy/tests/query.spec.ts packages/experimental/environment-policy/tests/database.spec.ts packages/experimental/environment-policy/tests/service.spec.ts
@@ -68,20 +72,20 @@ node_modules/.bin/tsc.cmd -p packages/experimental/environment-policy/tsconfig.j
 node_modules/.bin/tsc.cmd -p tsconfig.host.json --noEmit
 ```
 
-## Current scope and limitations
+## 当前范围和限制
 
-- The initial corpus covers national-level documents. Provincial documents are not included yet.
-- Legal-status answers use the status recorded in policy metadata. The system does not independently issue a legal opinion.
-- The SQLite index must be supplied separately on a fresh clone.
-- Use the original document to verify information before making a compliance or legal decision.
+- 当前语料覆盖国家级文件，暂未纳入省级文件。
+- 效力状态回答使用政策元数据中的记录，系统不独立出具法律意见。
+- 新克隆的仓库需要单独准备 SQLite 索引。
+- 涉及合规或法律决定时，应回到原始文件核验。
 
-## Further documentation
+## 相关文档
 
-- [Environment policy package guide](packages/experimental/environment-policy/README.md)
-- [Environment policy Q&A implementation plan](.agents/notes/proposed/feature/2026-09-25-environment-policy-qa.md)
+- [环境政策法规插件说明](packages/experimental/environment-policy/README.md)
+- [环境政策法规知识问答实施方案](.agents/notes/proposed/feature/2026-09-25-environment-policy-qa.md)
 
-## License
+## 许可证
 
 [MIT](LICENSE)
 
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

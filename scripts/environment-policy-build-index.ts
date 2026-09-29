@@ -25,9 +25,9 @@ async function json<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, 'utf8')) as T
 }
 
-const inventoryPath = resolve(argument('--inventory') ?? '../policy_inventory-national.json')
-const metadataPath = resolve(argument('--metadata') ?? '../policy_metadata-report-national-v2.json')
-const descriptionsPath = resolve(argument('--descriptions') ?? '../policy-descriptions-national-v1.json')
+const inventoryPath = resolve(argument('--inventory') ?? '../artifacts/policy_inventory-national.json')
+const metadataPath = resolve(argument('--metadata') ?? '../artifacts/policy_metadata-report-national-v2.json')
+const descriptionsPath = resolve(argument('--descriptions') ?? '../artifacts/policy-descriptions-national-v1.json')
 const outputPath = resolve(argument('--output') ?? 'data/policy-national-v1.sqlite')
 const manifestPath = resolve(argument('--manifest') ?? 'data/policy-national-v1-manifest.json')
 const sourceRoot = argument('--source-root') ?? 'data/policy_md/national'
