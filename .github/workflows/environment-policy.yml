@@ -1,0 +1,49 @@
+name: Environment policy QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/experimental/environment-policy/**'
+      - 'scripts/environment-policy-**'
+      - 'tsconfig.host.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/environment-policy.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/experimental/environment-policy/**'
+      - 'scripts/environment-policy-**'
+      - 'tsconfig.host.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/environment-policy.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Environment policy tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck environment policy package
+        run: pnpm exec tsc -b packages/experimental/environment-policy/tsconfig.json --pretty false
+
+      - name: Run environment policy tests
+        run: pnpm exec vitest run packages/experimental/environment-policy/tests

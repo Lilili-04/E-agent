@@ -7725,6 +7725,9 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:*
         version: link:../../core/tools
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.0
 
   packages/experimental/inspector:
     dependencies:
