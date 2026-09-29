@@ -1,95 +1,84 @@
-# DeepSeek Harness
+# 基于 DSH 的国家级环境政策法规问答系统
 
 [English](README.md) | 中文
 
-DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
+本项目基于 DeepSeek Harness（DSH）的插件架构，面向国家级中文环境政策法规、标准、规划和政策文件提供知识问答能力。
 
-它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
+系统从本地 SQLite 索引中检索证据，再由 DSH agent 用自然语言组织答案。检索和生成分开处理：模型只接收有限长度的原文证据和引用元数据，索引和语料由部署者在本地管理。
 
-文档：[https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+## 当前问答能力
 
-## 开发者预览
+- 回答条款问题，例如“《中华人民共和国海洋环境保护法》第一条是什么？”
+- 按主题查找法规，例如查询海洋保护、水污染、固体废物、城市排水等相关国家级文件。
+- 查询元数据中记录的发布日期和效力状态。
+- 用户没有询问历史时优先使用最新版本；用户明确询问历史时再返回修订版本信息。
+- 结合标题精确匹配、元数据检索、BM25 全文检索和有限证据筛选。
+- 在答案中列出文件名、发布日期、条款或章节位置和原文证据。
 
-DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
+当前本地索引包含 494 份国家级文件和 61,455 个解析后的正文单元。索引是生成的本地数据产物，出于体积和部署原因不会上传到 GitHub。
 
-运行本项目前，请阅读[安全说明](SAFETY.zh.md)。
+## 项目目录
 
-<a id="run"></a>
-
-## 运行
-
-### 通过 `npm` 运行
-
-安装 `Node.js`，然后运行：
-
-```sh
-npx @deepseek-ai/dsh web
+```text
+packages/experimental/environment-policy/   Environment policy service, query planner, tools, and preset
+data/README.md                              Local index preparation instructions
+scripts/environment-policy-build-index.ts   SQLite index builder
+data/policy-national-v1.sqlite              Local database, ignored by Git
+.dsh-build/environment-policy-web.patch.yml Local launch overlay, ignored by Git
 ```
 
-该命令默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。详见 [Web UI 指南](docs/user/guide/index.zh.md)。
+## 运行环境
 
-<a id="run-from-source"></a>
+- Windows、macOS 或 Linux
+- Node.js 22.19 或更高版本
+- pnpm 11 或更高版本
+- 本地 `data/policy-national-v1.sqlite` 索引
 
-### 从源码运行
+数据库是体积较大的生成产物，不包含在仓库中。请把已有索引放在 `data/policy-national-v1.sqlite`，或者按照 [data/README.zh.md](data/README.zh.md) 使用本地语料重新构建。
 
-如需从仓库源码运行：
+## 本地启动
 
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
+在仓库根目录执行：
+
+```powershell
 pnpm install
 pnpm run build
-pnpm dsh web
+pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open
 ```
 
-`pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
+打开 DSH 输出的地址，通常是 `http://127.0.0.1:3080`。启动 overlay 会把环境政策 SQLite 服务和 `policy_search` 工具挂载到环境政策问答 preset 中。
 
-## 社区与支持
+preset 使用仓库相对路径 `./data/policy-national-v1.sqlite`。请从仓库根目录启动 DSH，确保相对路径能够正确解析。
 
-- 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
-- 为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现。
-- 欢迎加入 DeepSeek Harness 企微群：扫码添加企微小助手并填写入群问卷，完成后小助手会邀请你入群。
+## 构建或替换本地索引
 
-<table>
-  <thead>
-    <tr>
-      <th align="center">企微小助手</th>
-      <th align="center">入群问卷</th>
-      <th align="center">微信公众号</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-assistant.png" alt="DeepSeek Harness 企微小助手二维码" width="180" height="180"></td>
-      <td align="center"><a href="https://trtgsjkv6r.feishu.cn/share/base/form/shrcnIt5twSVdLGD52KJBckGCgg"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-survey.png" alt="DeepSeek Harness 入群问卷二维码" width="180" height="180"></a></td>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wechat-official-account.png" alt="DeepSeek Harness 团队微信公众号二维码" width="180" height="180"></td>
-    </tr>
-  </tbody>
-</table>
+默认构建命令会把数据库和清单写入 `data/`：
 
-## 参与贡献
-
-参见 [CONTRIBUTING.md](CONTRIBUTING.zh.md)。
-
-## 开发
-
-请先阅读[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)。
-
-`pnpm run dev:web` 会在一个终端里完成构建、启动，并在源码修改时重建 client bundle；`make help` 列出 Web 与 Desktop 对应的 Make target。完整表格见开发指南的「应用命令」一节。
-
-面向 agent：请遵循 [AGENTS.md](AGENTS.md)。
-
-## 引用
-
-```bibtex
-@misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
-}
+```powershell
+node --experimental-strip-types scripts/environment-policy-build-index.ts
 ```
+
+输入文件属于本地语料产物。如果文件位于其他位置，可以使用 `--inventory`、`--metadata`、`--descriptions`、`--output`、`--manifest` 和 `--source-root` 参数。默认记录的资料根目录标识为 `data/policy_md/national`，可避免把本机绝对路径写入生成清单。
+
+## 验证实现
+
+```powershell
+node_modules/.bin/vitest.cmd run packages/experimental/environment-policy/tests/query.spec.ts packages/experimental/environment-policy/tests/database.spec.ts packages/experimental/environment-policy/tests/service.spec.ts
+node_modules/.bin/tsc.cmd -p packages/experimental/environment-policy/tsconfig.json --noEmit
+node_modules/.bin/tsc.cmd -p tsconfig.host.json --noEmit
+```
+
+## 当前范围和限制
+
+- 当前语料覆盖国家级文件，暂未纳入省级文件。
+- 效力状态回答使用政策元数据中的记录，系统不独立出具法律意见。
+- 新克隆的仓库需要单独准备 SQLite 索引。
+- 涉及合规或法律决定时，应回到原始文件核验。
+
+## 相关文档
+
+- [环境政策法规插件说明](packages/experimental/environment-policy/README.zh.md)
+- [环境政策法规知识问答实施方案](.agents/notes/proposed/feature/2026-09-25-environment-policy-qa.zh.md)
 
 ## 许可证
 

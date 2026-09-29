@@ -2,33 +2,33 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
-/deepseek-harness:
-  en: f68c4f080ce55ff2
-  zh: 88a76d7f7f0b260e
-/deepseek-harness/developer-preview:
-  en: 4ef4d8a71ac143f0
-  zh: 1bfc3149ba8e5543
-/deepseek-harness/run:
-  en: 4e0248e4c6474fc6
-  zh: eb2fb8d78c7d6bc0
-/deepseek-harness/run/run-from-npm:
-  en: e22005cd42e6cbad
-  zh: 0f536f4208df1d60
-/deepseek-harness/run/run-from-source:
-  en: 819e3f7c144d0d64
-  zh: de815f040975dba7
-/deepseek-harness/community-and-support:
-  en: 42848f543aff6e02
-  zh: d46a07bdc6f36629
-/deepseek-harness/contributing:
-  en: cabc2d3e9f8898bd
-  zh: 83b6d238bae29ce3
-/deepseek-harness/development:
-  en: 803ca2b11b497bed
-  zh: 8b4071eb0e7783ef
-/deepseek-harness/citation:
-  en: 6704e9e5a8d49a91
-  zh: 85c9cdd8d56f8e9d
-/deepseek-harness/license:
+/national-environmental-policy-q-a-system-built-on-dsh:
+  en: 7997c006c5f1f0f5
+  zh: 43b2f9cbb01eca00
+/national-environmental-policy-q-a-system-built-on-dsh/what-the-system-does:
+  en: b8c8b53c804eaacd
+  zh: b3394143ed1a287a
+/national-environmental-policy-q-a-system-built-on-dsh/project-layout:
+  en: adc2993164c4f242
+  zh: 34c95daea88d6e46
+/national-environmental-policy-q-a-system-built-on-dsh/requirements:
+  en: 95b183727ffada29
+  zh: a9b0279611465b8c
+/national-environmental-policy-q-a-system-built-on-dsh/run-locally:
+  en: 43296b4721544514
+  zh: 35699a4c7c09cb01
+/national-environmental-policy-q-a-system-built-on-dsh/build-or-replace-the-local-index:
+  en: 106aaef2625ab2b3
+  zh: 911dbbe48df78efa
+/national-environmental-policy-q-a-system-built-on-dsh/verify-the-implementation:
+  en: eafdbb778e026dbb
+  zh: 4419d9a60e46ea79
+/national-environmental-policy-q-a-system-built-on-dsh/current-scope-and-limitations:
+  en: bebb87b63963a2a8
+  zh: 964c9297f6cc9ade
+/national-environmental-policy-q-a-system-built-on-dsh/further-documentation:
+  en: 11b16559fbddea4d
+  zh: 2f6eeae8541a09f8
+/national-environmental-policy-q-a-system-built-on-dsh/license:
   en: 926995344fc1c72b
   zh: c92fab5abf85932f
