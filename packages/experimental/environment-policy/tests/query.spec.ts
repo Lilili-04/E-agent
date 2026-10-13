@@ -91,6 +91,36 @@ describe('environment-policy query planning', () => {
   it('marks topic lists as document discovery queries', () => {
     expect(planPolicyQuery('海洋有哪些法规？').intent).toBe('document-discovery')
   })
+
+  it('routes a clear unquoted document name to exact overview recall', () => {
+    const plan = planPolicyQuery('中华人民共和国核安全法讲了什么内容')
+    expect(plan.intent).toBe('overview')
+    expect(plan.filters.title).toBe('中华人民共和国核安全法')
+    expect(plan.freeText).toBe('')
+    expect(plan.useExactRecall).toBe(true)
+    expect(plan.useFullTextRecall).toBe(false)
+    expect(plan.useDescriptionRecall).toBe(false)
+  })
+
+  it('removes question wording from an exact article lookup', () => {
+    const plan = planPolicyQuery('中华人民共和国核安全法第一条是什么')
+    expect(plan.filters).toMatchObject({ title: '中华人民共和国核安全法', articleLabel: '第一条' })
+    expect(plan.freeText).toBe('')
+  })
+
+  it('recognizes content questions for unquoted law names', () => {
+    const plan = planPolicyQuery('排污许可管理条例的主要内容是什么')
+    expect(plan.intent).toBe('overview')
+    expect(plan.filters.title).toBe('排污许可管理条例')
+    expect(plan.freeText).toBe('')
+  })
+
+  it('keeps a named law requirements question on the exact-document path', () => {
+    const plan = planPolicyQuery('环境影响评价法有哪些要求')
+    expect(plan.intent).toBe('overview')
+    expect(plan.filters.title).toBe('环境影响评价法')
+    expect(plan.freeText).toBe('')
+  })
 })
 
 describe('environment-policy evidence query', () => {
@@ -109,6 +139,38 @@ describe('environment-policy evidence query', () => {
 
     await queryPolicies(store, '海洋法有哪些？', { titleTopic: '大气' })
     expect(store.titleRequests).toHaveLength(1)
+  })
+
+  it('keeps inferred unquoted document names from crowding out authoritative content', async () => {
+    const targetHeading = hit({
+      recordKey: 'nuclear-safety',
+      title: '中华人民共和国核安全法',
+      kind: 'heading',
+      label: '中华人民共和国主席令',
+      text: '# 中华人民共和国主席令',
+      score: 900,
+    })
+    const targetArticle = hit({
+      recordKey: 'nuclear-safety',
+      unitId: 'unit-article-1',
+      title: '中华人民共和国核安全法',
+      kind: 'article',
+      label: '第一条',
+      text: '第一条 为了保障核安全，预防与应对核事故，安全利用核能，保护生态环境，制定本法。',
+      score: 20,
+    })
+    const unrelated = hit({
+      recordKey: 'nuclear-materials',
+      title: '中华人民共和国核材料管制条例',
+      kind: 'heading',
+      label: '中华人民共和国核材料管制条例',
+      text: '# 中华人民共和国核材料管制条例',
+      score: 500,
+    })
+    const store = new Store([targetHeading, targetArticle], [targetArticle, unrelated], [], [], [targetHeading, unrelated])
+    const evidence = await queryPolicies(store, '中华人民共和国核安全法讲了什么内容')
+    expect(evidence.results.every(result => result.title === '中华人民共和国核安全法')).toBe(true)
+    expect(evidence.results.some(result => result.text.includes('第一条'))).toBe(true)
   })
 
   it('keeps separate records for an explicit history question', async () => {

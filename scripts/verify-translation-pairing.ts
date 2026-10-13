@@ -22,6 +22,8 @@ import {
 } from './translation-pairing-record.ts'
 import {
   languageSwitcherTargets,
+  pairAnchorOfArgument,
+  chineseHomepageMatches,
   parseTranslationMarkdown,
   parseTranslationPairingCliArgs,
   parseTranslationPairingManifest,
@@ -85,6 +87,14 @@ if (manifestContent === undefined) {
   throw new Error('scripts/translation-pairing.manifest.json is missing from the selected content plane')
 }
 const manifest = parseTranslationPairingManifest(manifestContent.toString('utf8'))
+if (repositoryFileExists('README.en.md') && repositoryFileExists('README.md') && repositoryFileExists('README.zh.md')) {
+  const homepage = readRepositoryFile('README.md')
+  const counterpart = readRepositoryFile('README.zh.md')
+  if (homepage !== undefined && counterpart !== undefined && !chineseHomepageMatches(homepage.toString('utf8'), counterpart.toString('utf8'))) {
+    console.error('verify-translation-pairing: README.md Chinese body differs from README.zh.md')
+    process.exit(2)
+  }
+}
 const isTranslationPairSource = translationPairSourcePredicate(manifest)
 
 /**
@@ -200,8 +210,8 @@ for (const source of sources) {
 // union of .zh.md files and .i18n.yaml records so a half-deleted pair is
 // caught from either remnant.
 const pairAnchors = new Set<string>()
-for (const zh of translations) pairAnchors.add(zh.replace(/\.zh\.md$/, '.md'))
-for (const meta of metas) pairAnchors.add(meta.replace(/\.i18n\.yaml$/, '.md'))
+for (const zh of translations) pairAnchors.add(pairAnchorOfArgument(zh))
+for (const meta of metas) pairAnchors.add(pairAnchorOfArgument(meta))
 
 for (const source of [...pairAnchors].sort()) {
   const paths = translationPairPaths(source)

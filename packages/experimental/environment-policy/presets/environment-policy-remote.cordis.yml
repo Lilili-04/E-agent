@@ -1,0 +1,18 @@
+# Remote alternative to environment-policy.cordis.yml; token stays outside Git.
+- id: environment-policy
+  name: cordis:group
+  group: true
+  isolate:
+    environmentPolicyKnowledge: true
+  config:
+    - id: environment-policy-remote
+      name: '@deepseek-ai/dsh-experimental-environment-policy/remote-service'
+      config:
+        endpoint: !!js "process.env.DGX_POLICY_API_URL ?? 'http://172.27.153.44:18080'"
+        tokenFile: !!js "process.env.DGX_POLICY_API_TOKEN_FILE ?? './.dsh-build/dgx-policy.token'"
+        timeoutMs: 8000
+    - id: tool-environment-policy
+      name: '@deepseek-ai/dsh-experimental-environment-policy/tools'
+      config:
+        maxResults: 8
+        maxEvidenceCharacters: 12000

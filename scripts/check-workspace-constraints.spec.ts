@@ -269,6 +269,14 @@ describe('package payload constraints', () => {
       .toEqual([expect.stringContaining('package.json files must be')])
   })
 
+  it('publishes policy provider chunks and presets while rejecting secret files', () => {
+    const dir = 'packages/experimental/environment-policy'
+    const manifest = JSON.parse(readFileSync(new URL(`../${dir}/package.json`, import.meta.url), 'utf8')) as WorkspaceManifest['manifest']
+    expect(checkWorkspaceManifest({ dir, manifest })).toEqual([])
+    expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, files: [...(manifest.files ?? []), '.env'] } }))
+      .toContainEqual(expect.stringContaining('package.json files must be'))
+  })
+
   it.each([
     { exports: { './locale/*.json': './locale/*.json' }, resources: ['locale/*.json'] },
     { exports: { './search/locale/*.json': './resources/search/*.json' }, resources: ['resources/search/*.json'] },

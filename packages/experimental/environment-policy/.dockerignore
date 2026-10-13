@@ -1,0 +1,9 @@
+*
+!src/
+!src/database.ts
+!src/query.ts
+!src/query-store.ts
+!src/hybrid-store.ts
+!deploy/
+!deploy/Dockerfile
+!deploy/server.ts

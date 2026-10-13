@@ -60,11 +60,12 @@ function latestDocumentVersions(results: readonly PolicyEvidenceResult[]): reado
       selected.set(key, result)
     }
   }
-  return [...selected.values()]
+  const recordKeys = new Set([...selected.values()].map(result => result.recordKey))
+  return results.filter(result => recordKeys.has(result.recordKey))
 }
 
 function distinctDocumentVersions(results: readonly PolicyEvidenceResult[]): readonly PolicyEvidenceResult[] {
-  return [...new Map(results.map(result => [result.recordKey, result])).values()]
+  return [...new Map(results.map(result => [result.resultId, result])).values()]
 }
 
 /** Remove retrieval workflow fields before evidence reaches the model. */
@@ -72,6 +73,8 @@ function publicSearchResult(result: EnvironmentPolicySearchResult, question: str
   const sourceResults = asksForHistory(question)
     ? distinctDocumentVersions(result.evidence.results)
     : latestDocumentVersions(result.evidence.results)
+  const citations = new Map<string, string>()
+  for (const item of sourceResults) if (!citations.has(item.recordKey)) citations.set(item.recordKey, String(citations.size + 1))
   return {
     results: sourceResults.map(({
       reviewStatus: _reviewStatus,
@@ -88,9 +91,9 @@ function publicSearchResult(result: EnvironmentPolicySearchResult, question: str
       lineStart: _lineStart,
       lineEnd: _lineEnd,
       ...item
-    }, index) => {
+    }) => {
       const { reviewStatus: _temporalReviewStatus, ...temporalFacts } = temporal
-      return { citationId: String(index + 1), ...item, temporal: temporalFacts }
+      return { citationId: citations.get(_recordKey), ...item, temporal: temporalFacts }
     }),
   }
 }

@@ -55,6 +55,24 @@ function build(documents: readonly PolicyImportDocument[], builtAt = '2026-09-26
 }
 
 describe('environment-policy SQLite database', () => {
+  it('samples the end of long documents and invalidates query caches on rebuild', () => {
+    const database = new PolicyDatabase(':memory:')
+    try {
+      const markdown = '# 水污染防治法\n\n' + Array.from({ length: 250 }, (_, index) => `第${index + 1}条 应当建设水污染防治设施。`).join('\n\n')
+      database.rebuild(build([document('long/full.md', markdown)]))
+      const recordKey = database.findSourcesByExact({})[0]!.recordKey
+      const overview = database.readOverviewUnits([recordKey], 8)
+      expect(overview).toHaveLength(8)
+      expect(overview.at(-1)?.label).toBe('第250条')
+      expect(database.searchContent('水污染').length).toBeGreaterThan(0)
+      expect(database.getTitles()).toContain('中华人民共和国水污染防治法')
+      const replacement = document('new/full.md', '# 排污许可条例\n\n第一条 应当取得排污许可证。')
+      database.rebuild(build([{ ...replacement, metadata: { ...replacement.metadata, canonicalTitleCandidate: '排污许可条例' } }]))
+      expect(database.getTitles()).toEqual(['排污许可条例'])
+      expect(database.searchContent('许可证')[0]?.text).toContain('许可证')
+    } finally { database.close() }
+  })
+
   it('rebuilds sources, metadata, units, descriptions, and a manifest', () => {
     const database = new PolicyDatabase(':memory:')
     try {

@@ -1,91 +1,131 @@
 # National Environmental Policy Q&A System Built on DSH
 
-English | [中文](README.md)
+English | [中文](README.zh.md)
 
-This project is an environmental policy and regulation question-answering system built on the DeepSeek Harness (DSH) plugin architecture. It is designed for questions about national-level Chinese environmental laws, regulations, standards, plans, and policy documents.
+This project uses DeepSeek Harness (DSH) to answer questions about national-level Chinese environmental laws, regulations, standards, plans, and policy documents. Users ask questions in local Harness; the system retrieves source passages and the model produces an answer with citations.
 
-The system retrieves evidence from a local SQLite index and uses the DSH agent to explain the answer in natural language. Retrieval and generation are separated: the model receives bounded source passages and citation metadata, while the index remains under local deployment control.
+**The default deployment runs Harness locally and the retrieval API, read-only SQLite, Chroma vector database and Qwen3 embedding service in Docker on DGX.** Collaborators using the remote service do not need a local database or MinerU outputs.
 
-## What the system does
-
-- Answers article-level questions such as “What does Article 1 of the Marine Environmental Protection Law provide?”
-- Finds documents by topic, including national regulations related to marine protection, water pollution, waste, and urban drainage.
-- Reports publication dates and the legal-status field recorded in the policy metadata.
-- Uses the latest version when history is not requested, and returns revision history when the user asks for it.
-- Uses exact title matching, metadata search, BM25 full-text retrieval, and bounded evidence selection.
-- Returns the document name, publication information, article or section location, and quoted source evidence.
-
-The current local index contains 494 national documents and 61,455 parsed content units. The index is a generated local artifact and is intentionally not uploaded to GitHub.
-
-## Project layout
+## System flow
 
 ```text
-packages/experimental/environment-policy/   Environment policy service, query planner, tools, and preset
-data/README.md                              Local index preparation instructions
-scripts/environment-policy-build-index.ts   SQLite index builder
-data/policy-national-v1.sqlite              Local database, ignored by Git
-.dsh-build/environment-policy-web.patch.yml Local launch overlay, ignored by Git
+User → Local Harness → policy_search → DGX retrieval API → Source evidence → Local Agent
+     ← Cited answer  ← Source evidence ← Query planning / retrieval
+
+DGX retrieval API
+  ├─ SQLite: exact lookup / body BM25 / source text
+  └─ Qwen3 embedding → Chroma: document vectors / passage vectors → SQLite source text
 ```
 
-## Requirements
+Local Harness owns the UI, Agent, model calls, and source presentation. DGX owns query planning, retrieval, ranking, and evidence limits. The database stores source text, metadata, content units, descriptions, and search terms. The model receives bounded source evidence; descriptions only assist document discovery and do not replace the source.
 
-- Windows, macOS, or Linux
-- Node.js 22.19 or newer
-- pnpm 11 or newer
-- A local `data/policy-national-v1.sqlite` index
+## Capabilities and corpus
 
-The database is not part of the repository because it is a large generated artifact. Put an existing index at `data/policy-national-v1.sqlite`, or rebuild it from the local corpus described in [data/README.md](data/README.md).
+- Prioritizes the corresponding document and source units for explicit titles, document numbers, or articles.
+- Discovers documents by topic using title search, body BM25, document vectors and passage vectors.
+- Returns publication dates and the legal-status fields recorded in the catalog.
+- Prefers the latest version in tool output unless the user explicitly requests history.
+- Includes source titles, publication dates, and article or section references in answers.
 
-## Run locally
+The current index contains **494 national documents and 61,455 content units**; the database is approximately **835 MiB**. SQLite files, source corpora, tokens, and machine-specific launch configuration are excluded from Git.
 
-From the repository root:
+## Existing workspace: start or restart
+
+Run from the repository root:
 
 ```powershell
-pnpm install
-pnpm run build
 pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open
 ```
 
-Complete dependency installation, the build, and the launch from the same interactive terminal when possible. Codex commands run in a separate non-interactive shell with a managed Node runtime and fallback pnpm. If `node_modules/.modules.yaml` is missing, pnpm may scan and relink the whole workspace again, which can make startup much slower. On a fresh or incomplete dependency tree, run `pnpm install --frozen-lockfile` once; after the build artifacts exist, launch the service without repeating the install or build step. For the development scripts documented in the package guide, use `--skip-build` when the artifacts are already current.
+On this computer, `environment-policy-web.patch.yml` selects the remote service at `http://172.27.153.44:18080` and reads its token from `.dsh-build/dgx-policy.token`. Do not put the token in README files, launch commands, or Git.
 
-For a subsequent restart, run only `pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open` from the repository root. Repeat `pnpm install` or `pnpm run build` only after dependencies or source files that affect the build have changed.
+Open the authenticated URL printed by DSH, normally at `http://127.0.0.1:3080`. DGX port `18080` serves retrieval requests; local port `3080` serves the Harness UI.
 
-Open the URL printed by DSH, normally `http://127.0.0.1:3080`. The launch overlay mounts the environment-policy SQLite service and the `policy_search` tool into an environment-policy agent preset.
+When dependencies and build artifacts exist, restarting requires only the command above. Install or build again only when dependencies change, artifacts are missing, or artifacts need regeneration.
 
-The preset uses the repository-relative database path `./data/policy-national-v1.sqlite`. Start DSH from the repository root so the path resolves correctly.
+## New collaborators: required inputs
 
-## Build or replace the local index
+| Item | How to prepare it |
+| --- | --- |
+| Source code | Clone the Git repository |
+| Runtime | Windows, macOS, or Linux; Node.js 22.x starting at 22.19, or 24 and newer; pnpm 11 or newer |
+| Model configuration | Configure an available model and its credentials in Harness model settings |
+| DGX endpoint | Join the server's LAN and obtain the endpoint from the deployment maintainer |
+| Query token | Obtain it privately and save it in a local token file |
+| Launch configuration | Prepare an Agent preset and launch patch for the local checkout |
 
-The default build command writes the database and manifest to `data/`:
+**A fresh clone does not contain `.dsh-build/`.** The current workspace patch contains absolute source paths and cannot be copied unchanged to another computer. The maintainer can configure a collaborator's preset using the [remote plugin group](packages/experimental/environment-policy/presets/environment-policy-remote.cordis.yml); see the [DGX deployment guide](packages/experimental/environment-policy/deploy/README.md) for configuration details.
+
+Remote-query collaborators need source code, model configuration, an endpoint, a token, and a launch configuration. **They do not need SQLite, policy_md, or MinerU outputs.** Corpus processing and index-building work require the corresponding data separately.
+
+Prepare dependencies and build artifacts once:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm run build
+```
+
+After preparing the local launch configuration, use the earlier launch command. Complete installation, build, and launch in the same interactive terminal when possible. Codex execution and the user's terminal can differ in Node, pnpm, and dependency-link state. If `node_modules/.modules.yaml` is missing, pnpm may inspect and relink the whole workspace, increasing startup time.
+
+## Layout and deployment documentation
+
+```text
+packages/experimental/environment-policy/src/       Query planner, SQLite and remote providers, tool
+packages/experimental/environment-policy/deploy/    Docker API, Compose and deployment guide
+packages/experimental/environment-policy/presets/   Local and remote plugin groups
+scripts/environment-policy-build-index.ts           Index builder
+data/README.md                                     Index inputs and local database preparation
+.dsh-build/                                         Machine-specific patches and token; ignored by Git
+```
+
+See the [environment-policy package guide](packages/experimental/environment-policy/README.md) for retrieval behavior. The [DGX deployment guide](packages/experimental/environment-policy/deploy/README.md) owns Docker configuration, authentication endpoints, database updates, and server maintenance commands.
+
+## Local index building and rollback
+
+Local SQLite mode supports independent development, index construction, and explicit rollback. It requires `data/policy-national-v1.sqlite`. See [data preparation](data/README.md) for source Markdown, inventory, metadata, and description inputs.
 
 ```powershell
 node --experimental-strip-types scripts/environment-policy-build-index.ts
 ```
 
-Use `--inventory`, `--metadata`, `--descriptions`, `--output`, `--manifest`, and `--source-root` when the local corpus is stored elsewhere. The default recorded source-root label is `data/policy_md/national`, which keeps the generated manifest portable across machines.
+The builder writes the database and manifest to `data/` by default. Use `--inventory`, `--metadata`, `--descriptions`, `--output`, `--manifest`, and `--source-root` for other input and output locations.
 
-## Verify the implementation
+This computer retains a local-database rollback patch. Stop the current Harness service before selecting it:
 
 ```powershell
-node_modules/.bin/vitest.cmd run packages/experimental/environment-policy/tests/query.spec.ts packages/experimental/environment-policy/tests/database.spec.ts packages/experimental/environment-policy/tests/service.spec.ts
-node_modules/.bin/tsc.cmd -p packages/experimental/environment-policy/tsconfig.json --noEmit
-node_modules/.bin/tsc.cmd -p tsconfig.host.json --noEmit
+pnpm dsh web --patch .dsh-build/environment-policy-local-web.patch.yml --no-open
 ```
 
-## Current scope and limitations
+Remote failures return errors instead of automatically using an older local index. Switching the database deployment does not change the question-answering tool interface.
 
-- The initial corpus covers national-level documents. Provincial documents are not included yet.
-- Legal-status answers use the status recorded in policy metadata. The system does not independently issue a legal opinion.
-- The SQLite index must be supplied separately on a fresh clone.
-- Use the original document to verify information before making a compliance or legal decision.
+## Verification and troubleshooting
 
-## Further documentation
+```powershell
+node_modules/.bin/vitest.cmd run packages/experimental/environment-policy/tests
+node_modules/.bin/tsc.cmd -p packages/experimental/environment-policy/tsconfig.json --noEmit
+```
 
-- [Environment policy package guide](packages/experimental/environment-policy/README.md)
-- [Environment policy Q&A implementation plan](.agents/notes/proposed/feature/2026-09-25-environment-policy-qa.md)
+| Symptom | Check |
+| --- | --- |
+| DGX connection failure | LAN access, endpoint, and server `/health` |
+| HTTP 401 | Whether the token file exists and matches the server token |
+| Missing launch patch | `.dsh-build/` is not in Git; prepare local configuration first |
+| Slow startup | Repeated installation/build, incomplete dependency links, and different terminal runtimes |
+| Missing evidence | Whether the corpus contains the document and which source units were returned |
+
+Tests cover query planning, SQLite, the real HTTP API, authentication, and remote tool composition. Remote integration tests temporarily start a local HTTP service.
+
+## Current scope
+
+The corpus covers national documents; provincial documents are not included. Legal-status answers use catalog metadata, and the system does not independently determine legal validity. Exact queries use SQLite; ordinary questions run lexical and vector retrieval concurrently, returning lexical evidence after semantic timeouts. The DGX API container does not use a GPU, while a separate GPU service provides embeddings; local Harness still configures the answer model. See the [deployment guide](packages/experimental/environment-policy/deploy/README.md) for settings and limitations.
+
+## Related documentation
+
+- [DGX Docker deployment, API, and rollback](packages/experimental/environment-policy/deploy/README.md)
+- [Environment-policy package guide](packages/experimental/environment-policy/README.md)
+- [Data and index preparation](data/README.md)
+- [Environment-policy Q&A implementation plan](.agents/notes/proposed/feature/2026-09-25-environment-policy-qa.md)
 
 ## License
 
-[MIT](LICENSE)
-
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[MIT](LICENSE). Third-party dependencies and their licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
