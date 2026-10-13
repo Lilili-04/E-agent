@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/environment-policy/deploy/README.md
+/dgx-environment-policy-database-deployment:
+  en: 5407def11f54eb0c
+  zh: 5d10f8642457e35c
+/dgx-environment-policy-database-deployment/service-and-data:
+  en: a9dbfb5c645b07eb
+  zh: ce4d0280bd0aa87e
+/dgx-environment-policy-database-deployment/docker-configuration:
+  en: 056cf0e51638af6c
+  zh: a0537da805a1b046
+/dgx-environment-policy-database-deployment/hybrid-retrieval:
+  en: 8a0e9001356c2249
+  zh: dbfe5d0f0cc8a2db
+/dgx-environment-policy-database-deployment/local-harness:
+  en: 0bc849ef44a82295
+  zh: 710a038aebf24c82
+/dgx-environment-policy-database-deployment/http-api:
+  en: be46e1fb15188c60
+  zh: 3926662938075a29
+/dgx-environment-policy-database-deployment/verification-record:
+  en: 998445aedef2d288
+  zh: e1bd20e16c3cd39c
+/dgx-environment-policy-database-deployment/updates-and-rollback:
+  en: 445ee66c3dc36384
+  zh: 53e641ab89d6bfb9

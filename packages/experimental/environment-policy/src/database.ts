@@ -82,6 +82,7 @@ export interface PolicyContentReadOptions {
   readonly limit?: number
   readonly recordKeys: readonly string[]
   readonly label?: string
+  readonly unitId?: string
 }
 
 /** One content-unit search hit with an evidence-ready source span. */
@@ -422,6 +423,8 @@ function sourceRow(row: SourceSqlRow): PolicySourceRow {
 /** Synchronous local SQLite index. Callers own and close the handle. */
 export class PolicyDatabase {
   readonly #database: DatabaseSync
+  #searchStatistics: { totalUnits: number; averageLength: number } | undefined
+  #titles: readonly string[] | undefined
 
   /** Open or initialize one local environment-policy database. */
   constructor(path: string, options: PolicyDatabaseOptions = {}) {
@@ -583,6 +586,8 @@ export class PolicyDatabase {
         manifest.descriptionCount,
       )
       this.#database.exec('COMMIT')
+      this.#searchStatistics = undefined
+      this.#titles = undefined
       return manifest
     } catch (error) {
       this.#database.exec('ROLLBACK')
@@ -641,6 +646,7 @@ export class PolicyDatabase {
    * Find one source unit for each document whose title contains a topic.
    * @param topic - explicit topic from the user's document-list question.
    * @param limit - maximum number of matching documents.
+   * @param label - optional exact article label to read from each matching document.
    * @returns source units scored by title brevity, with stable date and path order.
    */
   searchTitles(topic: string, limit = 20, label?: string): readonly PolicyContentSearchHit[] {
@@ -688,6 +694,48 @@ export class PolicyDatabase {
       || left.relativePath.localeCompare(right.relativePath)).slice(0, limit)
   }
 
+  /** @returns the document-title catalog cached for this opened index. */
+  getTitles(): readonly string[] {
+    this.#titles ??= this.findSourcesByExact({}, 1000).flatMap(row => row.title === undefined ? [] : [row.title])
+    return this.#titles
+  }
+
+  /**
+   * Read precise unit ids from the immutable source index.
+   * @param keys - source record and unit identifiers, capped at 100 lookups.
+   * @returns matching authoritative units in request order.
+   */
+  readUnitsById(keys: readonly { recordKey: string; unitId: string }[]): readonly PolicyContentSearchHit[] {
+    return keys.slice(0, 100).flatMap(key => this.readContentUnits({ recordKeys: [key.recordKey], unitId: key.unitId, limit: 1 }))
+  }
+
+  /**
+   * Sample authoritative body units across each complete document for an overview.
+   * @param recordKeys - exact document matches.
+   * @param limit - maximum sampled units across the selected documents.
+   * @returns source text spanning document beginnings, middles and ends.
+   */
+  readOverviewUnits(recordKeys: readonly string[], limit: number): readonly PolicyContentSearchHit[] {
+    const keys = [...new Set(recordKeys)].slice(0, limit)
+    const selected: { recordKey: string; unitId: string }[] = []
+    for (const [index, recordKey] of keys.entries()) {
+      const rows = this.#database.prepare(`
+        SELECT unit_id FROM content_units WHERE record_key = ? AND kind IN ('article', 'paragraph', 'list-item', 'generic-block')
+          AND (kind = 'article' OR NOT EXISTS (
+            SELECT 1 FROM content_units AS articles WHERE articles.record_key = content_units.record_key AND articles.kind = 'article'
+          ))
+        ORDER BY line_start
+      `).all(recordKey)
+      const count = Math.min(rows.length, Math.floor(limit / keys.length) + (index < limit % keys.length ? 1 : 0))
+      for (let slot = 0; slot < count; slot++) {
+        const row = rows[Math.floor(slot * (rows.length - 1) / Math.max(count - 1, 1))]
+        if (row === undefined) throw new Error('environment-policy database: overview unit missing')
+        selected.push({ recordKey, unitId: sqlString(row, 'unit_id') })
+      }
+    }
+    return this.readUnitsById(selected)
+  }
+
   /**
    * Search content units with BM25 scoring over a portable Latin-word and Chinese-bigram index.
    * @param query - lexical query text.
@@ -702,12 +750,16 @@ export class PolicyDatabase {
     const recordKeys = [...new Set(options.recordKeys ?? [])]
     const termSlots = terms.map(() => '?').join(', ')
     const recordPredicate = recordKeys.length === 0 ? '' : `AND t.record_key IN (${recordKeys.map(() => '?').join(', ')})`
-    const totalUnits = sqlNumber(this.#database.prepare('SELECT COUNT(*) AS count FROM content_units').get() as Record<string, SQLOutputValue>, 'count')
-    const averageLength = sqlNumber(this.#database.prepare(`
-      SELECT AVG(term_count) AS average_length FROM (
-        SELECT COUNT(*) AS term_count FROM content_search_terms GROUP BY record_key, unit_id
-      )
-    `).get() as Record<string, SQLOutputValue>, 'average_length')
+    if (this.#searchStatistics === undefined) {
+      const totalUnits = sqlNumber(this.#database.prepare('SELECT COUNT(*) AS count FROM content_units').get() as Record<string, SQLOutputValue>, 'count')
+      const averageLength = sqlNumber(this.#database.prepare(`
+        SELECT AVG(term_count) AS average_length FROM (
+          SELECT COUNT(*) AS term_count FROM content_search_terms GROUP BY record_key, unit_id
+        )
+      `).get() as Record<string, SQLOutputValue>, 'average_length')
+      this.#searchStatistics = { totalUnits, averageLength }
+    }
+    const { totalUnits, averageLength } = this.#searchStatistics
     const rows = this.#database.prepare(`
       WITH term_stats AS (
         SELECT term, COUNT(DISTINCT record_key || char(0) || unit_id) AS document_frequency
@@ -733,7 +785,7 @@ export class PolicyDatabase {
       GROUP BY t.record_key, t.unit_id
       ORDER BY matched_terms DESC, s.relative_path, u.line_start
       LIMIT ?
-    `).all(...terms, ...terms, ...recordKeys, limit).map(sqlSearchRow)
+    `).all(...terms, ...terms, ...recordKeys, Math.min(200, limit * 4)).map(sqlSearchRow)
     const normalizedQuery = normalizeSearchText(query).replace(/\s+/gu, '')
     return rows.map(row => ({
       ...sourceRow(row),
@@ -747,7 +799,7 @@ export class PolicyDatabase {
       score: bm25Score(row, totalUnits, averageLength) + (normalizeSearchText(row.text).replace(/\s+/gu, '').includes(normalizedQuery) ? 1 : 0),
     })).sort((left, right) => right.score - left.score
       || left.relativePath.localeCompare(right.relativePath)
-      || left.lineStart - right.lineStart)
+      || left.lineStart - right.lineStart).slice(0, limit)
   }
 
   /**
@@ -761,6 +813,7 @@ export class PolicyDatabase {
     const recordKeys = [...new Set(options.recordKeys)]
     if (recordKeys.length === 0) return []
     const labelPredicate = options.label === undefined ? '' : 'AND u.label = ?'
+    const unitPredicate = options.unitId === undefined ? '' : 'AND u.unit_id = ?'
     const rows = this.#database.prepare(`
       SELECT s.record_key, s.source_id, s.relative_path, s.source_hash,
         m.title, m.document_number, m.document_type, m.jurisdiction, m.legal_status, m.publish_date,
@@ -771,10 +824,10 @@ export class PolicyDatabase {
       JOIN sources s ON s.record_key = u.record_key
       JOIN metadata m ON m.record_key = u.record_key
       LEFT JOIN descriptions d ON d.record_key = u.record_key
-      WHERE u.record_key IN (${recordKeys.map(() => '?').join(', ')}) ${labelPredicate}
+      WHERE u.record_key IN (${recordKeys.map(() => '?').join(', ')}) ${labelPredicate} ${unitPredicate}
       ORDER BY s.relative_path, u.line_start
       LIMIT ?
-    `).all(...recordKeys, ...(options.label === undefined ? [] : [options.label]), limit).map(sqlSearchRow)
+    `).all(...recordKeys, ...(options.label === undefined ? [] : [options.label]), ...(options.unitId === undefined ? [] : [options.unitId]), limit).map(sqlSearchRow)
     return rows.map(row => ({
       ...sourceRow(row),
       unitId: row.unit_id,

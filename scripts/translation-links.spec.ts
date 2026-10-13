@@ -56,6 +56,20 @@ function expectUnchangedLinkInput(root: string, input: string): void {
 }
 
 describe('translation link locale validation', () => {
+  it('resolves explicit English and Chinese root siblings without changing other document pairs', () => {
+    const root = fixture()
+    writeFileSync(join(root, 'README.en.md'), '# Project\n')
+    writeFileSync(join(root, 'README.zh.md'), '# 项目\n')
+    const context: TranslationLinkContext = {
+      ...linkContext(root, 'docs/guide.zh.md'),
+      isTranslationPairSource: path => path === 'README.en.md' || path.startsWith('docs/'),
+    }
+    expect(rewriteTranslationLinkLocales('[项目](../README.en.md)', context).content).toBe('[项目](../README.zh.md)')
+    expect(rewriteTranslationLinkLocales('[Project](../README.zh.md)', { ...context, sourcePath: 'docs/guide.md' }).content)
+      .toBe('[Project](../README.en.md)')
+    expect(translationLinkLocaleViolations('[项目](../README.zh.md)', context)).toEqual([])
+  })
+
   it('rejects a Chinese link to the English sibling with an exact diagnostic', () => {
     const root = fixture()
     expect(translationLinkLocaleViolations(

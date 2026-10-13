@@ -160,7 +160,7 @@ function isTranslationSourceExcluded(file: string): boolean {
 /** Whether one discovered Markdown or sidecar path belongs to the bilingual source corpus. */
 export function isTranslationScopeFile(file: string): boolean {
   return !file.startsWith('.agents/notes/archived/')
-    && !isTranslationSourceExcluded(file) && (README_ARTIFACT.test(file)
+    && !isTranslationSourceExcluded(file) && (file === 'README.en.md' || README_ARTIFACT.test(file)
     || ROOT_PAIRED_DOCUMENT_ARTIFACT.test(file)
     || file.startsWith('.agents/notes/')
     || file.startsWith('docs/')
@@ -220,10 +220,22 @@ export function translationPairSourcePredicate(
  */
 export function pairAnchorOfArgument(argument: string): string {
   const normalized = argument.split('\\').join('/').replace(/^\.\//, '')
+  if (['README.md', 'README.en.md', 'README.zh.md', 'README.i18n.yaml', 'README'].includes(normalized)) return 'README.en.md'
   if (normalized.endsWith('.zh.md')) return `${normalized.slice(0, -'.zh.md'.length)}.md`
   if (normalized.endsWith('.i18n.yaml')) return `${normalized.slice(0, -'.i18n.yaml'.length)}.md`
   if (normalized.endsWith('.md')) return normalized
   return `${normalized}.md`
+}
+
+/**
+ * Compare the Chinese homepage and counterpart below their heading and switcher.
+ * @param homepage - root README.md using its four-line heading/switcher prefix.
+ * @param counterpart - README.zh.md using the same prefix layout.
+ * @returns whether their Chinese body text matches after newline normalization.
+ */
+export function chineseHomepageMatches(homepage: string, counterpart: string): boolean {
+  const body = (text: string): string => text.replace(/\r\n/g, '\n').split('\n').slice(4).join('\n')
+  return body(homepage) === body(counterpart)
 }
 
 /** A parsed `verify-translation-pairing` invocation. */

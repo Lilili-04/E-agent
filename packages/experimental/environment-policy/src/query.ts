@@ -1,3 +1,5 @@
+import { performance } from 'node:perf_hooks'
+
 /** A review state that may be used to constrain policy retrieval. */
 export type PolicyReviewStatus = 'generated' | 'pending-review' | 'rejected' | 'reviewed' | 'stale'
 
@@ -26,7 +28,7 @@ export interface PolicyQueryFilters {
 /** A deterministic retrieval plan derived from one user question. */
 export interface PolicyQueryPlan {
   readonly question: string
-  readonly intent: 'comparison' | 'document-discovery' | 'lookup' | 'temporal'
+  readonly intent: 'comparison' | 'document-discovery' | 'lookup' | 'overview' | 'temporal'
   readonly freeText: string
   readonly filters: PolicyQueryFilters
   /** A document-name hint inferred from an unquoted title in the question. */
@@ -40,6 +42,8 @@ export interface PolicyQueryPlan {
 export interface PolicyQueryPlanningOptions {
   readonly currentDate?: string
   readonly filters?: Partial<PolicyQueryFilters>
+  /** Indexed document names used to confirm inferred title constraints. */
+  readonly titleCatalog?: readonly string[]
   /** Topic copied from a document-list question for title-based recall. */
   readonly titleTopic?: string
 }
@@ -103,8 +107,17 @@ export interface PolicyDescriptionSearchRequest {
   readonly limit: number
 }
 
+/** Semantic source hits and any degradation warning from the vector provider. */
+export interface PolicySemanticRecall {
+  readonly elapsedMs?: number
+  readonly hits: readonly PolicyQueryHit[]
+  readonly warnings: readonly string[]
+}
+
 /** Minimal database-independent read interface required by the query service. */
 export interface PolicyQueryStore {
+  getTitles?(): readonly string[]
+  searchSemanticContent?(request: PolicyTextSearchRequest): Promise<PolicySemanticRecall>
   findExact(request: PolicyExactSearchRequest): Promise<readonly PolicyQueryHit[]>
   searchTitles(topic: string, limit: number, label?: string): Promise<readonly PolicyQueryHit[]>
   searchContent(request: PolicyTextSearchRequest): Promise<readonly PolicyQueryHit[]>
@@ -116,6 +129,7 @@ export type PolicyMatchReason =
   | 'article-exact'
   | 'description'
   | 'document-number-exact'
+  | 'semantic'
   | 'full-text'
   | 'title-topic'
   | 'title-exact'
@@ -152,6 +166,13 @@ export interface PolicyEvidenceResult {
 
 /** Bounded retrieval output suitable for use as answer evidence. */
 export interface PolicyEvidenceBundle {
+  readonly diagnostics?: {
+    readonly planMs: number
+    readonly lexicalMs: number
+    readonly semanticMs: number
+    readonly totalMs: number
+    readonly semanticUsed: boolean
+  }
   readonly plan: PolicyQueryPlan
   readonly results: readonly PolicyEvidenceResult[]
   readonly warnings: readonly string[]
@@ -201,8 +222,8 @@ function inferUnquotedTitle(question: string, articleLabel: string | undefined):
   const beforeArticle = articleLabel === undefined ? question : question.slice(0, question.indexOf(articleLabel))
   const candidate = beforeArticle
     .replace(/^.*?(?:资料中|库中|本地语料中)/u, '')
-    .replace(/(?:的)?(?:发布日期|公布日期|印发日期|效力状态|法律效力|主要解决什么环境管理问题|涉及哪些环境管理问题|讲了什么|是什么|主要规定什么|有哪些版本|有哪些|有什么规定|有什么|有哪些法规|有哪些文件).*$/u, '')
-    .replace(/(?:请问|请查询|查询|查找|检索|帮我|哪些|什么|如何|是否|关于|有关|内容|要求|规定|当前|目前|现在|现行|有效|国家级资料中)/gu, '')
+    .replace(/(?:的)?(?:发布日期|公布日期|印发日期|效力状态|法律效力|主要解决什么环境管理问题|涉及哪些环境管理问题|主要内容|具体内容|基本内容|相关内容|讲了什么|是什么|主要规定(?:了)?什么|有哪些版本|有哪些|有什么规定|有什么|有哪些法规|有哪些文件).*$/u, '')
+    .replace(/(?:请问|请查询|查询|查找|检索|帮我|请介绍|介绍|请说明|说明|请概括|概括|哪些|什么|如何|是否|关于|有关|内容|要求|规定|当前|目前|现在|现行|有效|国家级资料中)/gu, '')
     .replace(/[《》“”"'‘’？?，,。；;：:\s]+/gu, '')
     .trim()
   if (candidate.length < 4 || /^(国家级|文件|法规|法律|政策|资料)$/u.test(candidate)) return undefined
@@ -210,7 +231,17 @@ function inferUnquotedTitle(question: string, articleLabel: string | undefined):
   return candidate
 }
 
-/** Whether the question asks to keep historical document versions. */
+/** Strong title hints are safe to use as exact document constraints. */
+function isStrongTitleHint(title: string | undefined, explicit: boolean): boolean {
+  if (title === undefined) return false
+  return explicit || title.startsWith('中华人民共和国') || title.length >= 6 && /(?:法|条例|办法|规划|标准|方案|通知|名录|目录|指南|导则|规定)$/u.test(title)
+}
+
+/**
+ * Detect requests to keep historical document versions.
+ * @param question - original user question.
+ * @returns whether history or version comparison is explicitly requested.
+ */
 export function asksForHistory(question: string): boolean {
   return /历史|历次|沿革|修订前|旧版|历年版本|版本比较|各版本|变化/u.test(question)
 }
@@ -273,8 +304,10 @@ function freeText(question: string, extracted: readonly (string | undefined)[]):
   let text = question
   for (const value of extracted) if (value !== undefined) text = text.replace(value, ' ')
   return text
-    .replace(/请问|请查询|查询|查找|检索|帮我|哪些|什么|如何|是否|关于|有关|内容|要求|规定|当前|目前|现在|现行|有效/gu, ' ')
+    .replace(/请问|请查询|查询|查找|检索|帮我|请介绍|介绍|请说明|说明|请概括|概括|讲了什么|主要讲了什么|主要规定(?:了)?什么|涉及哪些|主要解决什么环境管理问题|(?:的)?主要内容(?:是)?|(?:的)?具体内容(?:是)?|(?:的)?发布日期|(?:的)?公布日期|(?:的)?印发日期|(?:的)?效力状态|法律效力|有哪些版本|有哪些|有什么规定|有什么|哪些|什么|如何|是否|关于|有关|内容|要求|规定|当前|目前|现在|现行|有效/gu, ' ')
     .replace(/[？?，,。；;：:\s]+/gu, ' ')
+    .trim()
+    .replace(/(?:是|为)$/u, '')
     .trim()
 }
 
@@ -308,32 +341,61 @@ export function planPolicyQuery(question: string, options: PolicyQueryPlanningOp
   const title = titleMatch?.[1]?.trim()
   const documentNumber = matchValue(DOCUMENT_NUMBER_PATTERN, normalizedQuestion)
   const articleLabel = matchValue(ARTICLE_PATTERN, normalizedQuestion)
-  const date = parseDateFilter(normalizedQuestion, options.currentDate)
+  const catalogStatus = /效力状态|法律效力|标注.*状态/u.test(normalizedQuestion)
+    && !/截至|现行有效|当前有效|是否.*有效|\d{4}年/u.test(normalizedQuestion)
+  const date = catalogStatus ? undefined : parseDateFilter(normalizedQuestion, options.currentDate)
+  const heuristicTitle = inferUnquotedTitle(normalizedQuestion, articleLabel)
+  const catalogMatches = options.titleCatalog?.filter((name) => {
+    const compact = normalizeExact(normalizedQuestion)
+    const alias = normalizeExact(name).replace(/^中华人民共和国/u, '')
+    return compact.includes(normalizeExact(name)) || alias.length >= 4 && compact.includes(alias)
+  }).filter((name, _index, matches) => {
+    const compact = normalizeExact(normalizedQuestion)
+    if (compact.includes(normalizeExact(name))) return true
+    const alias = normalizeExact(name).replace(/^中华人民共和国/u, '')
+    return !matches.some(other => other !== name
+      && normalizeExact(other).replace(/^中华人民共和国/u, '').includes(alias))
+  })
+  const catalogTitle = catalogMatches === undefined ? heuristicTitle
+    : unique(catalogMatches).length === 1 ? catalogMatches[0] : undefined
+  const inferredTitleHint = title ?? catalogTitle
+  const documentDiscovery = title === undefined && documentNumber === undefined && articleLabel === undefined
+    && !isStrongTitleHint(inferredTitleHint, false)
+    && (/(?:哪些|什么|列出).*(?:法规|法律(?!责任)|政策|文件)/u.test(normalizedQuestion)
+      || /(?:法规|法律(?!责任)|政策|文件|法(?!律责任)).*(?:有哪些|有什么)|相关(?:的)?(?:法规|法律(?!责任)|政策|文件)/u.test(normalizedQuestion))
+  const exactTitleHint = isStrongTitleHint(inferredTitleHint, title !== undefined) && !documentDiscovery
   const inferred: PolicyQueryFilters = {
-    ...(title === undefined ? {} : { title }),
+    ...(!exactTitleHint || inferredTitleHint === undefined ? {} : { title: inferredTitleHint }),
     ...(documentNumber === undefined ? {} : { documentNumber }),
     ...(articleLabel === undefined ? {} : { articleLabel }),
     ...(date === undefined ? {} : { date }),
-    documentTypes: inferredDocumentTypes(normalizedQuestion),
+    documentTypes: documentDiscovery || title !== undefined ? inferredDocumentTypes(normalizedQuestion) : [],
     jurisdictions: /全国|国家级/u.test(normalizedQuestion) ? ['national'] : [],
     reviewStatuses: inferredReviewStatuses(normalizedQuestion),
   }
   const filters = mergeFilters(inferred, options.filters)
-  const titleHint = title ?? inferUnquotedTitle(normalizedQuestion, articleLabel)
+  const titleHint = inferredTitleHint
   const resolvedFilters = titleHint === undefined || title !== undefined
     ? filters
     : { ...filters, documentTypes: [] }
   const dateText = date === undefined
     ? undefined
     : matchValue(DATE_PATTERN, normalizedQuestion) ?? matchValue(YEAR_PATTERN, normalizedQuestion)
-  const text = freeText(normalizedQuestion, [titleMatch?.[0], documentNumber, articleLabel, dateText])
+  const text = freeText(normalizedQuestion, [
+    titleMatch?.[0],
+    exactTitleHint && titleMatch === null ? titleHint : undefined,
+    documentNumber,
+    articleLabel,
+    dateText,
+  ])
   const exact = filters.title !== undefined || filters.documentNumber !== undefined || filters.articleLabel !== undefined
   const intent = /对比|比较|区别|差异|修订前后|新旧/u.test(normalizedQuestion)
     ? 'comparison'
-    : !filters.title && !filters.documentNumber && !filters.articleLabel
-        && /有哪些|有什么|列出|相关(?:的)?(?:法规|法律|政策|文件)/u.test(normalizedQuestion)
+    : documentDiscovery
       ? 'document-discovery'
-      : filters.date?.role === 'as-of' ? 'temporal' : 'lookup'
+      : exactTitleHint && titleHint !== undefined && text.length === 0
+        ? 'overview'
+        : filters.date?.role === 'as-of' ? 'temporal' : 'lookup'
   return {
     question: normalizedQuestion,
     intent,
@@ -383,9 +445,10 @@ function temporalAssessment(hit: PolicyQueryHit, filter: PolicyDateFilter | unde
   return facts.status === 'effective' ? 'confirmed-effective' : 'unconfirmed'
 }
 
-function matchReasons(hit: PolicyQueryHit, plan: PolicyQueryPlan, channel: 'description' | 'exact' | 'full-text' | 'title-topic'): PolicyMatchReason[] {
+function matchReasons(hit: PolicyQueryHit, plan: PolicyQueryPlan, channel: 'description' | 'exact' | 'full-text' | 'semantic' | 'title-topic'): PolicyMatchReason[] {
   const reasons: PolicyMatchReason[] = []
   if (channel === 'description') reasons.push('description')
+  if (channel === 'semantic') reasons.push('semantic')
   if (channel === 'full-text') reasons.push('full-text')
   if (channel === 'title-topic') reasons.push('title-topic')
   const title = plan.filters.title
@@ -405,15 +468,16 @@ interface RankedHit {
   readonly temporalAssessment: PolicyTemporalAssessment
 }
 
-function ranked(hit: PolicyQueryHit, plan: PolicyQueryPlan, channel: 'description' | 'exact' | 'full-text' | 'title-topic', descriptionScore = 0): RankedHit | undefined {
+function ranked(hit: PolicyQueryHit, plan: PolicyQueryPlan, channel: 'description' | 'exact' | 'full-text' | 'semantic' | 'title-topic', rank = 1): RankedHit | undefined {
   if (!satisfiesFilters(hit, plan.filters)) return undefined
   const assessment = temporalAssessment(hit, plan.filters.date)
   if (assessment === 'exclude') return undefined
-  const base = channel === 'exact' ? 100 : channel === 'title-topic' ? 80 : channel === 'full-text' ? 50 : 20
-  const providerScore = Number.isFinite(hit.score) ? hit.score : 0
+  const base = channel === 'exact' ? 1000 : channel === 'title-topic' && plan.intent === 'document-discovery' ? 80 : 0
+  const weight = channel === 'description' ? 0.5 : 1
+  const providerScore = weight / (60 + rank)
   return {
     hit,
-    score: base + providerScore + (channel === 'description' ? descriptionScore : 0),
+    score: base + providerScore,
     reasons: matchReasons(hit, plan, channel),
     temporalAssessment: assessment,
   }
@@ -430,7 +494,7 @@ function mergeRanked(values: readonly RankedHit[]): RankedHit[] {
     }
     merged.set(key, {
       hit: value.score > previous.score ? value.hit : previous.hit,
-      score: Math.max(previous.score, value.score) + 2,
+      score: previous.score + value.score,
       reasons: unique([...previous.reasons, ...value.reasons]).sort(),
       temporalAssessment: previous.temporalAssessment === 'confirmed-effective' || value.temporalAssessment === 'confirmed-effective'
         ? 'confirmed-effective'
@@ -493,35 +557,39 @@ export async function queryPolicies(
   question: string,
   options: PolicyQueryOptions = {},
 ): Promise<PolicyEvidenceBundle> {
+  const started = performance.now()
   const maxResults = positiveInteger(options.maxResults, DEFAULT_MAX_RESULTS, MAX_RESULTS, 'maxResults')
   const maxEvidenceCharacters = positiveInteger(options.maxEvidenceCharacters, DEFAULT_MAX_EVIDENCE_CHARACTERS, MAX_EVIDENCE_CHARACTERS, 'maxEvidenceCharacters')
-  const plan = planPolicyQuery(question, options)
+  const plan = planPolicyQuery(question, { ...options, ...(store.getTitles === undefined ? {} : { titleCatalog: store.getTitles() }) })
+  const planMs = Math.round(performance.now() - started)
   const candidateLimit = Math.min(MAX_RESULTS, Math.max(maxResults * 4, 12))
   const titleTopic = options.titleTopic?.trim()
   const titleHint = plan.titleHint
-  const unsupportedQuestion = /火星|虚构行星|不涉及|未涉及|没有.*(?:法规|文件|规定)/u.test(question)
-  if (unsupportedQuestion && plan.filters.title === undefined) {
-    return {
-      plan,
-      results: [],
-      warnings: ['no-authoritative-evidence'],
-      limits: { maxResults, maxEvidenceCharacters, returnedEvidenceCharacters: 0 },
-    }
-  }
   const useTitleTopic = plan.intent === 'document-discovery'
     && titleTopic !== undefined && titleTopic.length >= 2 && titleTopic.length <= 64
     && question.includes(titleTopic)
-  const [exactHits, titleHits, contentHits, descriptionHits] = await Promise.all([
-    plan.useExactRecall ? store.findExact({ plan, limit: candidateLimit }) : Promise.resolve([]),
+  const preciseDocument = plan.filters.title !== undefined || plan.filters.documentNumber !== undefined
+  const preciseLookup = preciseDocument && (plan.filters.articleLabel !== undefined
+    || /发布日期|公布日期|印发日期|效力状态|法律效力|生效日期/u.test(question))
+  const semanticUsed = !plan.useExactRecall && store.searchSemanticContent !== undefined
+  const semanticRecall: Promise<PolicySemanticRecall> = semanticUsed && store.searchSemanticContent !== undefined
+    ? store.searchSemanticContent({ query: question, plan, limit: candidateLimit })
+    : Promise.resolve({ hits: [], warnings: [] })
+  const lexicalStarted = performance.now()
+  const lexicalRecall = Promise.all([
+    plan.useExactRecall && (preciseLookup || !plan.useFullTextRecall || plan.filters.articleLabel !== undefined || plan.intent === 'overview' || asksForHistory(question) || plan.intent === 'comparison') ? store.findExact({ plan, limit: plan.intent === 'overview' ? maxResults : candidateLimit }) : Promise.resolve([]),
     useTitleTopic
       ? store.searchTitles(titleTopic, candidateLimit, plan.filters.articleLabel)
       : titleHint !== undefined && plan.filters.title === undefined
         ? store.searchTitles(titleHint, candidateLimit, plan.filters.articleLabel)
         : Promise.resolve([]),
-    plan.useFullTextRecall ? store.searchContent({ query: plan.freeText, plan, limit: candidateLimit }) : Promise.resolve([]),
-    plan.useDescriptionRecall ? store.searchDescriptions({ query: plan.freeText, plan, limit: candidateLimit }) : Promise.resolve([]),
-  ])
-  const descriptionScores = new Map(descriptionHits.map(hit => [hit.recordKey, hit.score]))
+    plan.useFullTextRecall && !preciseLookup
+      ? store.searchContent({ query: plan.freeText, plan, limit: candidateLimit }) : Promise.resolve([]),
+    plan.useDescriptionRecall && store.searchSemanticContent === undefined
+      ? store.searchDescriptions({ query: plan.freeText, plan, limit: candidateLimit }) : Promise.resolve([]),
+  ]).then(hits => ({ hits, elapsedMs: Math.round(performance.now() - lexicalStarted) }))
+  const [lexical, semantic] = await Promise.all([lexicalRecall, semanticRecall])
+  const [exactHits, titleHits, contentHits, descriptionHits] = lexical.hits
   const descriptionEvidence = descriptionHits.length === 0
     ? []
     : await store.searchContent({
@@ -531,10 +599,11 @@ export async function queryPolicies(
       recordKeys: unique(descriptionHits.map(hit => hit.recordKey)),
     })
   const rankedHits = mergeRanked([
-    ...exactHits.map(hit => ranked(hit, plan, 'exact')).filter((value): value is RankedHit => value !== undefined),
-    ...titleHits.map(hit => ranked(hit, plan, 'title-topic')).filter((value): value is RankedHit => value !== undefined),
-    ...contentHits.map(hit => ranked(hit, plan, 'full-text')).filter((value): value is RankedHit => value !== undefined),
-    ...descriptionEvidence.map(hit => ranked(hit, plan, 'description', descriptionScores.get(hit.recordKey) ?? 0)).filter((value): value is RankedHit => value !== undefined),
+    ...exactHits.map((hit, index) => ranked(hit, plan, 'exact', index + 1)).filter((value): value is RankedHit => value !== undefined),
+    ...titleHits.map((hit, index) => ranked(hit, plan, 'title-topic', index + 1)).filter((value): value is RankedHit => value !== undefined),
+    ...semantic.hits.map((hit, index) => ranked(hit, plan, 'semantic', index + 1)).filter((value): value is RankedHit => value !== undefined),
+    ...contentHits.map((hit, index) => ranked(hit, plan, 'full-text', index + 1)).filter((value): value is RankedHit => value !== undefined),
+    ...descriptionEvidence.map((hit, index) => ranked(hit, plan, 'description', index + 1)).filter((value): value is RankedHit => value !== undefined),
   ])
   const selectedHits = plan.intent === 'document-discovery' && !asksForHistory(question)
     ? [...rankedHits.reduce((selected, value) => {
@@ -550,24 +619,46 @@ export async function queryPolicies(
     return selected
   }, new Map<string, RankedHit>()).values()]
   const titleConstrained = titleHint !== undefined && plan.filters.title === undefined && !useTitleTopic
-    ? deduplicatedUnits.filter(value => normalizeExact(value.hit.title ?? '').includes(normalizeExact(titleHint))
-      || normalizeExact(titleHint).includes(normalizeExact(value.hit.title ?? ''))
-      || value.reasons.includes('title-topic'))
+    ? deduplicatedUnits.filter(value =>
+      normalizeExact(value.hit.title ?? '').includes(normalizeExact(titleHint))
+      || normalizeExact(titleHint).includes(normalizeExact(value.hit.title ?? '')))
     : deduplicatedUnits
+  const substantiveCandidates = plan.intent === 'document-discovery'
+    ? titleConstrained
+    : titleConstrained.some(value => value.hit.kind !== 'heading')
+      ? titleConstrained
+        .filter(value => value.hit.kind !== 'heading')
+        .sort((left, right) => {
+          const priority = (kind: string): number => kind === 'article' ? 3 : kind === 'paragraph' ? 2 : 1
+          return plan.intent === 'overview'
+            ? priority(right.hit.kind) - priority(left.hit.kind) || right.score - left.score
+            : right.score - left.score || priority(right.hit.kind) - priority(left.hit.kind)
+        })
+      : titleConstrained
+  const balancedCandidates = plan.intent === 'document-discovery'
+    ? substantiveCandidates
+    : substantiveCandidates.filter((value, index, values) => {
+      const previous = values.slice(0, index).filter(item => item.hit.recordKey === value.hit.recordKey).length
+      return previous < (plan.useExactRecall ? maxResults : 4)
+    })
   const results: PolicyEvidenceResult[] = []
   let returnedEvidenceCharacters = 0
-  for (const value of titleConstrained) {
+  for (const value of balancedCandidates) {
     if (results.length >= maxResults || returnedEvidenceCharacters >= maxEvidenceCharacters) break
     const remaining = maxEvidenceCharacters - returnedEvidenceCharacters
     const result = evidenceResult(value, remaining)
     results.push(result)
     returnedEvidenceCharacters += Array.from(result.text).length
   }
-  const warnings: string[] = []
+  const warnings: string[] = [...semantic.warnings]
   if (results.length === 0) warnings.push('no-authoritative-evidence')
   if (results.some(result => result.temporalAssessment === 'unconfirmed')) warnings.push('temporal-status-unconfirmed')
   if (results.some(result => result.textTruncated)) warnings.push('evidence-truncated')
   return {
+    diagnostics: {
+      planMs, lexicalMs: lexical.elapsedMs, semanticMs: semantic.elapsedMs ?? 0,
+      totalMs: Math.round(performance.now() - started), semanticUsed,
+    },
     plan,
     results,
     warnings,

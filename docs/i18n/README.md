@@ -53,6 +53,8 @@ Shared generated regions, such as the Cordis subsystem regions and the per-packa
 
 Generated English sources omit the language switcher that ordinary authored sources carry, because adding it would make the generator stale; their Chinese counterparts still link back to the English source. A manually maintained Chinese counterpart may rewrite only self-referential generation and maintenance statements that would otherwise be false for the reviewed translation; all technical content remains subject to the ordinary faithfulness rules.
 
+The project homepage `README.md` is a Chinese copy. Its bilingual pair uses `README.en.md`, `README.zh.md` and `README.i18n.yaml`; the gate also checks that the homepage body matches the Chinese counterpart below the heading and language switcher.
+
 **Excluded** (never paired, and the gate rejects a `.zh.md` or `.i18n.yaml` for them):
 
 - [cordis-api/inherited.md](../cordis-api/inherited.md) — generated without a reviewed Chinese counterpart, so both website locales project the English source.

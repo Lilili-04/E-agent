@@ -28,10 +28,11 @@ function policyDocument(options: {
   title?: string
   publishDate?: string
   relativePath?: string
+  body?: string
 } = {}): PolicyImportDocument {
   const title = options.title ?? '中华人民共和国水污染防治法'
   const publishDate = options.publishDate ?? '2017-06-27'
-  const markdown = `# ${title}\n\n第一条 为了保护和改善环境，防治水污染，保护水生态，保障饮用水安全，维护公众健康。`
+  const markdown = `# ${title}\n\n${options.body ?? '第一条 为了保护和改善环境，防治水污染，保护水生态，保障饮用水安全，维护公众健康。'}`
   const sourceId = `source-${sha256(markdown).slice(0, 24)}`
   const metadata: DocumentMetadata = {
     sourceId,
@@ -67,6 +68,38 @@ function policyDocument(options: {
 }
 
 describe('environment-policy service and tool composition', () => {
+  it('keeps multiple passages from one source under the same citation', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'policy-passages-'))
+    directories.push(directory)
+    const path = join(directory, 'policy.sqlite')
+    const database = new PolicyDatabase(path)
+    database.rebuild({ sourceRoot: directory, builtAt: '2026-10-13T00:00:00.000Z', documents: [policyDocument({ body: '第一条 为了防治水污染制定本法。\n\n第二条 应当建设水污染处理设施。' })] })
+    database.close()
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(SqliteEnvironmentPolicyKnowledge, { path })
+      await ctx.plugin(PolicyTools)
+      const result = await ctx.tools.execute({ name: 'policy_search', arguments: { question: '中华人民共和国水污染防治法' }, callId: ToolCallId('policy-multiple-passages'), signal: new AbortController().signal })
+      const output = result.content.find(block => block.type === 'text')
+      if (output?.type !== 'text') throw new Error('missing policy evidence')
+      const parsed = JSON.parse(output.text) as { results: Array<{ citationId: string; label: string }> }
+      expect(parsed.results.map(item => ({ citationId: item.citationId, label: item.label }))).toMatchInlineSnapshot(`
+        [
+          {
+            "citationId": "1",
+            "label": "第一条",
+          },
+          {
+            "citationId": "1",
+            "label": "第二条",
+          },
+        ]
+      `)
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('fails with a stable error and does not create a missing runtime index', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'environment-policy-missing-'))
     directories.push(directory)

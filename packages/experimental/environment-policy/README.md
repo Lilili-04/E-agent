@@ -102,6 +102,8 @@ Mount `SqliteEnvironmentPolicyKnowledge` with the database path, then mount the 
 
 [`presets/environment-policy.cordis.yml`](presets/environment-policy.cordis.yml) is an optional group to insert into an Agent preset. It uses the repository-relative `./data/policy-national-v1.sqlite` path. Run DSH from the repository root, or pass an explicit path when launching from another directory. The group isolates the knowledge service and leaves the standard presets unchanged.
 
+The remote provider mounts `./remote-service` instead of the SQLite provider and calls the same retrieval implementation over HTTP. It loads the real build manifest at startup, supports cancellation and timeouts, and reports remote failures without using a local fallback. See the [DGX Docker deployment guide](deploy/README.md).
+
 <a id="startup-environment"></a>
 ### Startup environment
 
@@ -110,19 +112,19 @@ Start DSH from the same interactive terminal used to install dependencies and bu
 <a id="evaluation-baseline"></a>
 ## Evaluation baseline
 
-[`eval/cases.ts`](eval/cases.ts) contains 90 deterministic retrieval questions across article lookup, topic discovery, publication date, reported legal status, version history, no-answer, negative, and OCR-sensitive categories. Each case records human-readable expected document titles and whether authoritative evidence should be returned. The package test fixes the case count, unique identifiers, and category coverage. A fixed-index runner and human verification of expected content-unit IDs remain Step 9 work before the baseline can justify adding semantic vector recall.
+[`eval/cases.ts`](eval/cases.ts) contains 90 deterministic retrieval questions across article lookup, topic discovery, publication date, reported legal status, version history, no-answer, negative, and OCR-sensitive categories. Each case records human-readable expected document titles and whether authoritative evidence should be returned. The package test fixes the case count, unique identifiers, and category coverage. DGX supports optional vector recall; human verification of expected content-unit IDs remains necessary because title matches do not establish article accuracy.
 
 <a id="offline-generation-and-review"></a>
 ## Offline generation and review
 
-The package itself remains deterministic and model-agnostic. A caller may use a local rule, a human-written sample, or a child agent as the adapter. In every case, the authoritative Markdown stays local, and the returned description is only a retrieval aid. It must not replace the source text, catalog metadata, or legal-status review.
+Description schema, citation, hash and review-state validation is deterministic; generation uses a caller-supplied adapter. A caller may use a local rule, a human-written sample, or a child agent as the adapter. In every case, the authoritative Markdown stays in the build environment, and the returned description is only a retrieval aid. It must not replace the source text, catalog metadata, or legal-status review.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The library discovers files named `full.md` recursively, hashes their bytes, extracts candidate headings, checks for a sibling PDF, and records quality flags. Deterministic line rules retain headings, legal sections, articles, paragraphs, lists, tables, attachments, images, and fenced blocks with source spans. SQLite stores sources, metadata, content units, descriptions, citations, search terms, and one committed build manifest. Query planning applies exact metadata filters first, then portable lexical and description-assisted recall, deterministic ranking, evidence limits, and conservative temporal assessment.
+The library discovers files named `full.md` recursively, hashes their bytes, extracts candidate headings, checks for a sibling PDF, and records quality flags. Deterministic line rules retain headings, legal sections, articles, paragraphs, lists, tables, attachments, images, and fenced blocks with source spans. SQLite stores sources, metadata, content units, descriptions, citations, search terms, and one committed build manifest. Query planning confirms document names against indexed titles. Names, document numbers and article labels use exact retrieval; overviews sample body units across complete documents. Ordinary questions use body BM25; the DGX hybrid adapter adds parallel document and passage vector recall, rank fusion, evidence limits, deduplication and conservative temporal assessment. Vector candidates are hydrated from SQLite and checked against the build identity and source hash.
 
-No runtime invariant companion is published because the immutable SQLite manifest is the sole runtime index identity and the package maintains no independent projection that can diverge from it.
+No runtime invariant companion is published; the SQLite manifest identifies the committed build, and hybrid retrieval checks vector collection build identities and source hashes against SQLite before returning evidence.
 
 <a id="further-exploration"></a>
 ## Further Exploration
@@ -137,7 +139,7 @@ No runtime invariant companion is published because the immutable SQLite manifes
 
 #### What the model sees
 
-The optional `./tools` plugin registers `policy_search` and a prompt section. For a document-list question, the model may supply a `topic` copied from the original question; the tool uses it to recall titles and retains the original question for filters and BM25 content and description search. Topics absent from the question are ignored, and ordinary retrieval remains available when no topic is supplied. Unless the question asks for history or comparison, the tool keeps the newest publication date for each normalized document title. Model-facing results renumber citations from one, omit paths and workflow fields, and instruct the model to end with a plain-text numbered source list. The prompt uses plain Chinese for clause explanations, applies catalog legal-status labels directly when asked, distinguishes publication and effective dates, and does not generate source hyperlinks.
+The optional `./tools` plugin registers `policy_search` and a prompt section. For a document-list question, the model may supply a `topic` copied from the original question; the tool uses it to recall titles and retains the original question for filters and body BM25. Hybrid mode also uses document and passage vector recall; the standalone SQLite provider uses lexical description-assisted recall. Topics absent from the question are ignored, and ordinary retrieval remains available when no topic is supplied. Unless the question asks for history or comparison, the tool keeps the newest publication date for each normalized document title. Multiple passages from the same document share one citation number. Model-facing results renumber citations from one, omit paths and workflow fields, and instruct the model to end with a plain-text numbered source list. The prompt uses plain Chinese for clause explanations, applies catalog legal-status labels directly when asked, distinguishes publication and effective dates, and does not generate source hyperlinks.
 
 #### Token effect
 
@@ -155,8 +157,8 @@ The prompt section and tool schema are stable for one plugin configuration, so t
 - Description generation is only a reviewable discovery aid. It cannot replace the authoritative Markdown, metadata fields, or evidence returned by later retrieval tools. A changed source hash marks a saved description `stale`.
 - PDF matching currently checks the `extracted` directory containing each `full.md`; a source without a sibling PDF receives a quality flag.
 - The query service retains conservative temporal assessment fields for internal callers, while the model tool omits those workflow fields and reports catalog legal-status labels when asked.
-- It does not choose a model provider or require an external API. An injected adapter can generate descriptions, including through a child agent, but all outputs remain subject to local citation, hash, schema, and status validation.
-- Retrieval currently uses exact metadata predicates, Chinese bigrams, Latin terms, and description-assisted recall. It does not require a vector database, and semantic embeddings can be added later behind the query-store interface if evaluation shows a recall gap.
+- SQLite retrieval and description validation do not require an external API. Description generation uses a caller-supplied adapter, including a child agent; all outputs remain subject to citation, hash, schema and status validation.
+- SQLite supports independent exact and lexical retrieval. Optional DGX hybrid retrieval requires Chroma and an embedding service. Vector timeouts and failures return lexical evidence from the same SQLite build with a degradation warning; configuration, indexing and timing fields are documented in the [deployment guide](deploy/README.md).
 
 <a id="dev-note"></a>
 ### Dev Note

@@ -46,6 +46,7 @@ export function translationPairPaths(source: string): TranslationPairPaths {
   if (!source.endsWith('.md') || source.endsWith('.zh.md')) {
     throw new Error(`expected an English Markdown path, received ${JSON.stringify(source)}`)
   }
+  if (source === 'README.en.md') return { source, zh: 'README.zh.md', meta: 'README.i18n.yaml' }
   return {
     source,
     zh: source.replace(/\.md$/, '.zh.md'),
@@ -95,7 +96,7 @@ function sectionHash(blocks: string[]): string {
 /**
  * Compute the record for one pair's current contents.
  *
- * Both sides are split at every heading; section `i` of one side corresponds
+ * Line endings are normalized to LF before both sides are split at every heading; section `i` of one side corresponds
  * to section `i` of the other. Each side's hash covers its top-level blocks
  * except fenced code blocks and generated regions, which the pairing gate
  * requires to be identical on both sides. A section with no remaining blocks
@@ -115,8 +116,8 @@ export function computeTranslationPairingRecord(
   zh: string,
   context: TranslationPairingRecordContext,
 ): TranslationPairingRecord {
-  const enSections = sections(normalizeTranslationMarkdownLinks(en, { ...context, sourcePath: paths.source }))
-  const zhSections = sections(normalizeTranslationMarkdownLinks(zh, { ...context, sourcePath: paths.zh }))
+  const enSections = sections(normalizeTranslationMarkdownLinks(en.replace(/\r\n/g, '\n'), { ...context, sourcePath: paths.source }))
+  const zhSections = sections(normalizeTranslationMarkdownLinks(zh.replace(/\r\n/g, '\n'), { ...context, sourcePath: paths.zh }))
   if (enSections.length !== zhSections.length) {
     throw new Error(`${paths.source} has ${enSections.length - 1} heading(s) but ${paths.zh} has ${zhSections.length - 1}`)
   }

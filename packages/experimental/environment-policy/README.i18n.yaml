@@ -18,20 +18,20 @@
   en: e34bb953949fac26
   zh: 7bc261d4f5c95cd3
 /deepseek-ai-dsh-experimental-environment-policy/build-and-query-the-index:
-  en: 5ae2d6d9633a94b6
-  zh: 914c7821c9536b7d
+  en: ea05495d36ae2969
+  zh: c57af896cbf7dbe1
 /deepseek-ai-dsh-experimental-environment-policy/build-and-query-the-index/startup-environment:
   en: ac5af37ff3ffc563
   zh: ebb4c4c39c996d56
 /deepseek-ai-dsh-experimental-environment-policy/evaluation-baseline:
-  en: e80df9ec3cfdfaf5
-  zh: eb72cd4257f1815f
+  en: 85d32a865b1aada9
+  zh: 99227ac6bd1d8d84
 /deepseek-ai-dsh-experimental-environment-policy/offline-generation-and-review:
-  en: da9510f73108c404
-  zh: 530d05882b907160
+  en: c6ad3b9eea08772f
+  zh: 16973b0ce0a60e74
 /deepseek-ai-dsh-experimental-environment-policy/understand-the-implementation:
-  en: ebff5f8433356fa4
-  zh: 2a5bc76f549b4c7d
+  en: 0c29179fa83ae714
+  zh: 2883c1b8b10732d7
 /deepseek-ai-dsh-experimental-environment-policy/further-exploration:
   en: d3ebb2adc84fc449
   zh: 204202292757d124
@@ -42,8 +42,8 @@
   en: 104acc9630bf2af5
   zh: 024eaae69afd9808
 /deepseek-ai-dsh-experimental-environment-policy/model-experience/policy-search-tool/what-the-model-sees:
-  en: 4adbafbaa2449423
-  zh: 585ffc3114dc40a5
+  en: 305213e2e28b2307
+  zh: 2fa6d51921bab1de
 /deepseek-ai-dsh-experimental-environment-policy/model-experience/policy-search-tool/token-effect:
   en: 4118e5069d36c929
   zh: 5181ba86b2edaf21
@@ -51,8 +51,8 @@
   en: fa4f3118829328fd
   zh: 5619916e335688a8
 /deepseek-ai-dsh-experimental-environment-policy/known-limitations-and-deferred-work:
-  en: bfc4260a60fb4ad1
-  zh: b82fb7e0615a04cd
+  en: 605fcd3658cd440c
+  zh: b6572d80cbf75904
 /deepseek-ai-dsh-experimental-environment-policy/known-limitations-and-deferred-work/dev-note:
   en: b836f01bd0bceb4a
   zh: b836f01bd0bceb4a

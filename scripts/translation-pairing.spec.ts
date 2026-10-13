@@ -19,6 +19,7 @@ import {
   isTranslationScopeFile,
   languageSwitcherTargets,
   pairAnchorOfArgument,
+  chineseHomepageMatches,
   parseTranslationMarkdown,
   parseTranslationPairingCliArgs,
   parseTranslationPairingManifest,
@@ -254,6 +255,13 @@ describe('translation pairing records', () => {
     expect(() => record(en, `${zh}\n## 额外\n`)).toThrow('docs/foo.md has 3 heading(s) but docs/foo.zh.md has 4')
   })
 
+  it('keeps CRLF worktree records identical to LF Git-index records including frontmatter', () => {
+    const source = `---\nkind: guide\n---\n${en}`
+    const counterpart = `---\nkind: 指南\n---\n${zh}`
+    expect(record(source.replace(/\n/g, '\r\n'), counterpart.replace(/\n/g, '\r\n')))
+      .toEqual(record(source, counterpart))
+  })
+
   it('round-trips the canonical record and rejects malformed entries', () => {
     const computed = record(en, zh)
     const text = renderTranslationPairingRecord(paths, computed)
@@ -453,6 +461,18 @@ describe('translation structural signature', () => {
 })
 
 describe('pair CLI arguments', () => {
+  it('pairs explicit English and Chinese root READMEs while keeping the homepage Chinese', () => {
+    for (const file of ['README.md', 'README.en.md', 'README.zh.md', 'README.i18n.yaml']) {
+      expect(pairAnchorOfArgument(file)).toBe('README.en.md')
+    }
+    expect(isTranslationScopeFile('README.en.md')).toBe(true)
+    expect(translationPairPaths('README.en.md')).toEqual({ source: 'README.en.md', zh: 'README.zh.md', meta: 'README.i18n.yaml' })
+    const homepage = '# 项目\n\n[English](README.en.md)\n\n正文。\n'
+    const counterpart = '# 项目\n\n[English](README.en.md) | 中文\n\n正文。\n'
+    expect(chineseHomepageMatches(homepage, counterpart.replace(/\n/g, '\r\n'))).toBe(true)
+    expect(chineseHomepageMatches(homepage, counterpart.replace('正文', '过期正文'))).toBe(false)
+  })
+
   it('normalizes any pair file or bare stem to the English anchor', () => {
     expect(pairAnchorOfArgument('docs/foo.md')).toBe('docs/foo.md')
     expect(pairAnchorOfArgument('docs/foo.zh.md')).toBe('docs/foo.md')

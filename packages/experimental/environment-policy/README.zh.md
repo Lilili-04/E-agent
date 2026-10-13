@@ -102,6 +102,8 @@ node --experimental-strip-types scripts/environment-policy-build-index.ts
 
 [`presets/environment-policy.cordis.yml`](presets/environment-policy.cordis.yml) 是可插入 Agent preset 的可选组合，默认使用仓库相对路径 `./data/policy-national-v1.sqlite`。请从仓库根目录启动 DSH；如果从其他目录启动，请显式传入数据库路径。该组合隔离知识服务，不会修改标准 preset。
 
+远程模式挂载 `./remote-service`，通过 HTTP 调用同一套检索实现。服务启动时读取远程数据库的真实构建清单，支持请求取消和超时；远程不可用时直接返回错误，不自动切换本地库。参见 [DGX Docker 部署说明](deploy/README.zh.md)。
+
 <a id="startup-environment"></a>
 ### Startup environment
 
@@ -110,19 +112,19 @@ node --experimental-strip-types scripts/environment-policy-build-index.ts
 <a id="evaluation-baseline"></a>
 ## Evaluation baseline
 
-[`eval/cases.ts`](eval/cases.ts) 包含 90 个确定性检索问题，覆盖条款定位、主题发现、发布日期、目录效力状态、版本历史、无答案、否定词和 OCR 敏感场景。每个案例记录便于人工检查的期望文档标题，以及是否应返回权威证据。包测试固定案例数量、唯一标识和分类覆盖。在这套基线能够用于判断是否增加语义向量召回之前，Step 9 仍需补充固定索引运行器，并由人工核对期望内容单元 ID。
+[`eval/cases.ts`](eval/cases.ts) 包含 90 个确定性检索问题，覆盖条款定位、主题发现、发布日期、目录效力状态、版本历史、无答案、否定词和 OCR 敏感场景。每个案例记录便于人工检查的期望文档标题，以及是否应返回权威证据。包测试固定案例数量、唯一标识和分类覆盖。DGX 已提供可选向量召回；这套基线仍需由人工核对期望内容单元 ID，标题命中不能代替条款准确性评测。
 
 <a id="offline-generation-and-review"></a>
 ## Offline generation and review
 
-本包本身保持确定性，并且不绑定模型。调用方可以使用本地规则、人工填写的样本，或子 agent 作为适配器。在所有情况下，权威 Markdown 都保留在本地，生成的 description 只用于检索辅助，不能替代原文、目录元数据或法律效力审核。
+description 的格式、引用、哈希和审核状态校验保持确定性，生成由调用方提供的适配器完成。调用方可以使用本地规则、人工填写的样本，或子 agent 作为适配器。在所有情况下，权威 Markdown 都保留在构建环境中，生成的 description 只用于检索辅助，不能替代原文、目录元数据或法律效力审核。
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-该库递归发现名为 `full.md` 的文件，计算字节哈希，提取候选标题，检查同目录 PDF，并记录质量标记。确定性的行规则保留标题、法规章节、条款、段落、列表、表格、附件、图片和代码块的原文位置。SQLite 保存来源、元数据、内容单元、description、引用、检索词和一份已提交的构建清单。查询层先应用精确元数据条件，再执行可移植的词法召回和 description 辅助召回，最后做确定性排序、证据限长和保守的时间状态判断。
+该库递归发现名为 `full.md` 的文件，计算字节哈希，提取候选标题，检查同目录 PDF，并记录质量标记。确定性的行规则保留标题、法规章节、条款、段落、列表、表格、附件、图片和代码块的原文位置。SQLite 保存来源、元数据、内容单元、description、引用、检索词和一份已提交的构建清单。查询层用库内标题确认文件名称；名称、文号和条款定位走精确查询，概述从完整文档均匀选取正文。普通问题使用正文 BM25；DGX 的混合适配器并行执行文档与正文分段向量召回，按名次融合后限长、去重和评估时间状态。向量候选必须回读 SQLite 原文，并校验构建标识及源文件哈希。
 
-不发布运行时不变量伴随模块，因为不可变 SQLite 清单是唯一的运行时索引标识，本包没有可能与它分离的独立投影。
+不发布运行时不变量伴随模块；SQLite 清单标识已提交的构建，混合检索在返回证据前会对照 SQLite 检查向量集合的构建标识和源文件哈希。
 
 <a id="further-exploration"></a>
 ## Further Exploration
@@ -137,7 +139,7 @@ node --experimental-strip-types scripts/environment-policy-build-index.ts
 
 #### 模型看到什么
 
-可选的 `./tools` 插件会注册 `policy_search` 和对应提示词段。对于法规清单问题，模型可以从原问题中提取 `topic`；工具据此召回标题，同时保留原问题用于条件判断、正文 BM25 和 description 检索。原问题中没有的主题会被忽略；模型未提供主题时仍使用原有检索。除非问题明确询问历史或版本比较，工具会按规范化文档标题只保留发布日期最新的版本。面向模型的结果从一开始重新编号引用，移除路径和工作流字段，并要求模型在回答末尾生成纯文本编号来源。提示词要求条款问题先用通俗中文解释，询问效力时直接采用目录效力状态，区分发布日期和生效日期，并且不生成来源超链接。
+可选的 `./tools` 插件会注册 `policy_search` 和对应提示词段。对于法规清单问题，模型可以从原问题中提取 `topic`；工具据此召回标题，同时保留原问题用于条件判断和正文 BM25。混合模式还使用文档与正文分段向量召回；独立 SQLite 模式使用 description 词法辅助召回。原问题中没有的主题会被忽略；模型未提供主题时仍使用原有检索。除非问题明确询问历史或版本比较，工具会按规范化文档标题只保留发布日期最新的版本。同一法规可保留多条正文证据，并共用一个引用编号。面向模型的结果从一开始重新编号引用，移除路径和工作流字段，并要求模型在回答末尾生成纯文本编号来源。提示词要求条款问题先用通俗中文解释，询问效力时直接采用目录效力状态，区分发布日期和生效日期，并且不生成来源超链接。
 
 #### Token 影响
 
@@ -155,8 +157,8 @@ node --experimental-strip-types scripts/environment-policy-build-index.ts
 - description 只是可审核的检索辅助信息，不能替代权威 Markdown、元数据字段或后续检索工具返回的证据。源文件哈希变化后，已有 description 会标记为 `stale`。
 - PDF 匹配目前只检查包含 `full.md` 的 `extracted` 目录；没有同目录 PDF 的来源会被标记。
 - 查询服务为内部调用者保留保守的时效评估字段；面向模型的工具不返回这些工作流字段，并在用户询问时使用目录中的效力状态。
-- 它不选择模型供应商，也不要求外部 API。调用方注入的适配器可以生成 description，包括通过子 agent 生成，但所有结果都必须经过本地引用、哈希、格式和状态校验。
-- 当前检索使用精确元数据条件、中文双字词、拉丁文字词项和 description 辅助召回，不要求向量数据库。后续只有在评测证明存在召回缺口时，才需要在查询存储接口后增加语义向量能力。
+- SQLite 检索和 description 校验不要求外部 API。description 生成由调用方提供的适配器完成，包括通过子 agent 生成；所有结果都必须经过引用、哈希、格式和状态校验。
+- SQLite 提供独立的精确与词法检索；DGX 可选混合检索依赖 Chroma 和 embedding 服务。向量超时或不可用时返回同一 SQLite 的词法证据及降级警告；配置、索引构建和接口耗时见 [部署指南](deploy/README.zh.md)。
 
 <a id="dev-note"></a>
 ### Dev Note

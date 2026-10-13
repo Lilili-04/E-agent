@@ -14,6 +14,7 @@ export type EnvironmentPolicyErrorCode =
   | 'ENVIRONMENT_POLICY_ABORTED'
   | 'ENVIRONMENT_POLICY_INDEX_EMPTY'
   | 'ENVIRONMENT_POLICY_INDEX_UNAVAILABLE'
+  | 'ENVIRONMENT_POLICY_REMOTE_UNAVAILABLE'
   | 'ENVIRONMENT_POLICY_SERVICE_CLOSED'
 
 /** Expected operational failure from the environment-policy capability. */

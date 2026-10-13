@@ -1,34 +1,37 @@
-# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# Bilingual-pair consistency record for README.en.md (docs/i18n/README.md): per heading
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write README.md
-/dsh:
-  en: f0eabd4462429003
-  zh: 43b2f9cbb01eca00
-/dsh/section:
-  en: b3394143ed1a287a
-  zh: b3394143ed1a287a
-/dsh/section~2:
-  en: 34c95daea88d6e46
-  zh: 34c95daea88d6e46
-/dsh/section~3:
-  en: 5095525dd532dd83
-  zh: a9b0279611465b8c
-/dsh/section~4:
-  en: 088ab1d0d5336d35
-  zh: 088ab1d0d5336d35
-/dsh/section~5:
-  en: 911dbbe48df78efa
-  zh: 911dbbe48df78efa
-/dsh/section~6:
-  en: 4419d9a60e46ea79
-  zh: 4419d9a60e46ea79
-/dsh/section~7:
-  en: 964c9297f6cc9ade
-  zh: 964c9297f6cc9ade
-/dsh/section~8:
-  en: 2f6eeae8541a09f8
-  zh: 2f6eeae8541a09f8
-/dsh/section~9:
-  en: c92fab5abf85932f
-  zh: c92fab5abf85932f
+#   pnpm run verify-translation-pairing --write README.en.md
+/national-environmental-policy-q-a-system-built-on-dsh:
+  en: f2bcb5ef95c58f6d
+  zh: 5d8bf59d6e56d640
+/national-environmental-policy-q-a-system-built-on-dsh/system-flow:
+  en: d1983dc204418d34
+  zh: 059117d15b8e30b1
+/national-environmental-policy-q-a-system-built-on-dsh/capabilities-and-corpus:
+  en: 9afde84da4b4d35c
+  zh: deab2c769610429a
+/national-environmental-policy-q-a-system-built-on-dsh/existing-workspace-start-or-restart:
+  en: 2eef1eea1895e70b
+  zh: 6de326f05d5462f4
+/national-environmental-policy-q-a-system-built-on-dsh/new-collaborators-required-inputs:
+  en: 1288633cd722c6d0
+  zh: b592987cd897bcd4
+/national-environmental-policy-q-a-system-built-on-dsh/layout-and-deployment-documentation:
+  en: 19396bef9aa66c9e
+  zh: 44c10539c2a3cad8
+/national-environmental-policy-q-a-system-built-on-dsh/local-index-building-and-rollback:
+  en: 9b14bec4ccbb7fc6
+  zh: c7daf3a61506788f
+/national-environmental-policy-q-a-system-built-on-dsh/verification-and-troubleshooting:
+  en: 5a6f26fdc4d66d20
+  zh: 68325aeebb4c395a
+/national-environmental-policy-q-a-system-built-on-dsh/current-scope:
+  en: 76e160253abec1fb
+  zh: 5097f9a11cc372d7
+/national-environmental-policy-q-a-system-built-on-dsh/related-documentation:
+  en: d6dc36d0918ca97d
+  zh: 21f4606d7218aef8
+/national-environmental-policy-q-a-system-built-on-dsh/license:
+  en: f370bf50e60d7591
+  zh: ff42d2fc354c5513
