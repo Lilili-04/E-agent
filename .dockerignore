@@ -7,6 +7,8 @@
 !patches/**
 !tsconfig*.json
 !tsdown.config.ts
+!vitest.expected.config.ts
+!vitest.shared.ts
 !LICENSE
 !THIRD_PARTY_NOTICES.md
 !AGENTS.md
@@ -24,6 +26,9 @@
 !native/**
 !scripts/
 !scripts/**
+# Host typechecking imports scenario helpers and their declarations.
+!snapshots/session/session-query-spill/resolve-spill-command.mjs
+!snapshots/session/session-query-spill/resolve-spill-command.d.mts
 !benchmarks/
 !benchmarks/**
 !website/

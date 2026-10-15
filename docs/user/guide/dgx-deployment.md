@@ -46,6 +46,10 @@ For the current DGX, the example uses policy API `http://e-agent-policy-api:8080
 
 Run these commands in `deploy/dgx`. The image installs locked Linux dependencies, builds the application and native helpers, and then starts the supported `dsh web` profile. It does not download or start databases or models.
 
+The build context includes snapshot helper modules and their type declarations for Host typechecking, plus the Vitest configuration used by the image's startup test. Recorded session data remains excluded. Keep these build inputs when changing `.dockerignore`.
+
+The application filesystem is read-only. Its `/tmp` tmpfs allows execution because the native module loader and subprocess helpers use executable temporary files; retaining Docker's default `noexec` for that mount prevents startup. Keep `/tmp:exec,mode=1777` in the Compose configuration.
+
 ```bash
 cd deploy/dgx
 export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
@@ -76,7 +80,7 @@ To roll back application code, set `HARNESS_IMAGE` to the retained image tag in 
 
 ## Verify and troubleshoot
 
-Check the page, a policy lookup, and the existing retrieval and model services separately. Container health verifies the Web listener; it does not prove that downstream services or model credentials work.
+Check the page, a policy lookup, and the existing retrieval and model services separately. Container health expects the unauthenticated index to return HTTP 401; this verifies the Web listener while preserving browser authentication, but does not prove that downstream services or model credentials work. The image smoke exchanges the temporary startup token for a browser cookie and verifies the authenticated page returns HTTP 200.
 
 | Symptom | Check |
 | --- | --- |
