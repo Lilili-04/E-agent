@@ -2,7 +2,7 @@
 
 English | [中文](dgx-deployment.zh.md)
 
-This guide runs the Web UI and Agent in a dedicated Docker container on DGX. Browsers connect to that container; policy retrieval, SQLite, Chroma, embedding, and answer generation remain independently maintained services. The configuration is in [deploy/dgx](../../../deploy/dgx), and the reusable Agent preset is [environment-policy-dgx.patch.yml](../../../apps/cli/config/examples/environment-policy-dgx.patch.yml).
+This guide runs the Web UI and Agent in a dedicated Docker container on DGX. Browsers connect to that container; the retrieval API coordinates keyword and semantic channels over SQLite source data and Chroma indexes. SQLite is an embedded source database, not a network service; logical responsibilities and container placement are separate concerns. The configuration is in [deploy/dgx](../../../deploy/dgx), and the reusable Agent preset is [environment-policy-dgx.patch.yml](../../../apps/cli/config/examples/environment-policy-dgx.patch.yml).
 
 ## Deployment layout
 
@@ -11,16 +11,16 @@ The Harness image contains application code and dependencies. It contains no cor
 | Component | Container | Persistent data / interface |
 | --- | --- | --- |
 | Web UI and Agent | New Harness Compose project | Separate Harness state and workspace directories; browser port 3080 |
-| Retrieval API and SQLite | Existing `e-agent-policy-api` | Its own read-only SQLite mount; HTTP 8080 inside Docker |
-| Vector database | Existing `chroma` | Its own persistent index directory; HTTP 8000 inside Docker |
+| Retrieval service | Existing `e-agent-policy-api` | Coordinates recall and reads a separate persistent SQLite source snapshot read-only; HTTP 8080 inside Docker |
+| Semantic retrieval index | Existing `chroma` | Rebuildable vectors and source addresses in its own persistent directory; HTTP 8000 inside Docker |
 | Embedding model | Existing `vllm-qwen3-embedding-4b` | Its own model directory; HTTP 8000 inside Docker |
 | Answer model | Existing `vllm-qwen38-27b` | Its own model directory; OpenAI-compatible HTTP 8000 inside Docker |
 
 SQLite is an embedded database: the separate retrieval API container opens it read-only, rather than exposing a SQL database port. Harness never mounts that database. Updating or stopping the Harness Compose project does not update, restart, or remove any of the four existing services or their data. Their setup remains in the [retrieval deployment guide](../../../packages/experimental/environment-policy/deploy/README.md).
 
 ```text
-Browser → Harness container → policy API container → SQLite source evidence
-                  │                    └→ embedding container → Chroma container
+Browser → Harness container → policy API container → candidate recall / fusion → SQLite source evidence
+                  │                    └→ lexical indexes + embedding / Chroma semantic indexes
                   └→ Qwen generation container → cited answer
 ```
 

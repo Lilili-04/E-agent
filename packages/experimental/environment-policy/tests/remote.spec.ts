@@ -67,6 +67,9 @@ describe('remote environment-policy HTTP service', () => {
     expect((await fetch(`${endpoint}/health`)).status).toBe(200)
     expect((await fetch(`${endpoint}/v1/policy/manifest`)).status).toBe(401)
     expect((await fetch(`${endpoint}/v1/policy/search`, { method: 'POST', body: '{}' })).status).toBe(401)
+    expect((await fetch(`${endpoint}/v1/policy/status`)).status).toBe(401)
+    const status = await fetch(`${endpoint}/v1/policy/status`, { headers: { authorization: `Bearer ${token}` } })
+    expect(await status.json()).toMatchObject({ database: 'ready', semantic: { state: 'disabled' }, releaseVerification: 'legacy' })
   })
 
   it('returns article evidence through the remote provider and policy tool', async () => {

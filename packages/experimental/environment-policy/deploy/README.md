@@ -1,15 +1,16 @@
-# DGX environment-policy database deployment
+# DGX policy source data, indexes and retrieval service
 
 English | [中文](README.zh.md)
 
-This deployment runs the read-only SQLite index and retrieval API in a Docker container on DGX. Local Harness retains the UI, Agent, and model calls; `policy_search` requests source evidence over the LAN. The API container does not require a GPU; semantic retrieval calls a separate DGX GPU embedding container and exposes no database writes.
+This deployment runs a retrieval service on DGX. Harness runs locally or in its own container and requests source evidence over HTTP. SQLite owns policy content and metadata; keyword indexes and Chroma vectors locate candidates. The retrieval API coordinates these operations and is not a relational database. Its container requires no GPU and exposes no data writes.
 
 ## Service and data
 
 ```text
-Harness → policy_search → remote-service → DGX API
-                                            ├─ SQLite: metadata / BM25 / source text
-                                            └─ Qwen3 embedding → Chroma → SQLite source text
+Harness → policy_search → retrieval API → query planning
+  Exact query: title / number / article index → candidate addresses
+  Topic query: body BM25 + embedding / Chroma → candidate addresses
+  Merged addresses → SQLite batch read → validation / rank fusion → bounded evidence
 ```
 
 | Item | Configuration |
@@ -22,11 +23,11 @@ Harness → policy_search → remote-service → DGX API
 | Container name | `e-agent-policy-api` |
 | Token file | `/srv/e-agent/policy-api/.secrets/policy-token` |
 
-The database stores source text, content units, metadata, descriptions, and search terms. Exact and lexical queries require only SQLite; hybrid queries also require persistent Chroma indexes and the Qwen3 embedding service, without MinerU output directories. Index rebuilding still requires source Markdown and the corresponding build inputs.
+SQLite stores source text, content units, metadata, descriptions, and keyword search terms. Chroma stores derived vectors, source addresses, and optional text copies; those copies never supply citations. The API reads SQLite through a read-only mount in its own container; SQLite is embedded and needs no separate SQL server container. Chroma and Harness have independent containers and persistence. Rebuilding vectors requires the same source snapshot, pinned embedding weights, input preprocessing, and split rules. Neither serving nor restarting performs a rebuild.
 
 ## Docker configuration
 
-Deploy the package files `src/database.ts`, `src/query.ts`, `src/query-store.ts`, `src/hybrid-store.ts`, `.dockerignore`, and `deploy/` to `/srv/e-agent/policy-api`, and place the database in the data directory above. Create `deploy/.env` from `deploy/.env.example`, and write a random token of at least 32 characters to the token file. Keep the token outside Git.
+Deploy the package files `src/database.ts`, `src/query.ts`, `src/query-store.ts`, `src/hybrid-store.ts`, `src/release.ts`, `.dockerignore`, and `deploy/` to `/srv/e-agent/policy-api`, and place the database in the data directory above. Create `deploy/.env` from `deploy/.env.example`, and write a random token of at least 32 characters to the token file. Keep the token outside Git.
 
 ```dotenv
 POLICY_DATA_DIR=/srv/e-agent/policy-data
@@ -50,15 +51,15 @@ The SQLite directory uses a read-only bind mount; the application runs as a non-
 
 ## Hybrid retrieval
 
-Known document names, numbers and article labels read SQLite directly, bypassing the GPU. Ordinary questions run body BM25 and semantic recall concurrently; one query embedding serves both document and passage vector queries, with up to 256 cached questions. Document vectors locate candidate files and passage vectors locate spans; all evidence is hydrated from SQLite source text. Rank fusion combines channels, and multiple passages from one document share a citation number.
+Known document names, numbers and article labels bypass the GPU. Topic queries overlap embedding/vector requests with lexical recall; synchronous SQLite work still runs on the Node event loop. BM25 aggregates indexed terms before reading bounded candidate bodies. Both channels return addresses without citation text. The service deduplicates addresses, reads up to 100 distinct units per SQL batch, rejects missing units, changed hashes or invalid Unicode spans, then filters and fuses ranks using SQLite metadata. Multiple spans from one unit contribute only once per channel; multiple articles from one document share a citation number.
 
 `policy-retrieval` is the shared Docker network for all three containers. Add the Chroma and embedding services to this external network in their Compose files; the API uses container names at `http://chroma:8000` and `http://vllm-qwen3-embedding-4b:8000`. The existing Chroma host port remains bound to `127.0.0.1:8002`.
 
 `deploy/.env.example` lists semantic settings. `POLICY_DOCUMENT_COLLECTION` selects the existing combined document collection and `POLICY_PASSAGE_COLLECTION` selects the new passage collection. Candidate limits default to 12 documents and 32 passages. The document collection actually uses squared L2 distance with a default maximum of 0.9; passages use cosine distance with a default maximum of 0.45. Thresholds are configurable and do not express confidence in a legal conclusion. Clear both collection names for SQLite retrieval.
 
-The semantic budget defaults to 2000 milliseconds. Failures and timeouts return lexical results from the same remote SQLite with a `semantic-unavailable` warning. Failure of the remote API itself still produces an explicit local Harness error. `diagnostics` reports planning, lexical, semantic and total times, plus whether semantic recall ran; timings exclude Agent answer generation.
+The semantic budget defaults to 2000 milliseconds. One failed vector collection retains the other collection's candidates; failures and timeouts preserve lexical evidence with a `semantic-unavailable` warning. API failure remains an explicit Harness error. `diagnostics` reports planning, lexical, semantic, source-read and total times, candidate/distinct-unit counts, and rejected missing-unit, hash and span associations. `candidate-source-association-rejected` identifies discarded source links. Timings exclude answer generation.
 
-The DGX [build-passages.py](build-passages.py) script reads SQLite without writes and uses the existing embedding API to index articles and paragraphs into a new cosine collection with 1200 Unicode characters per span and 120-character overlap. It resumes by span ID and writes `passage-manifest.json` only after completion. DB, endpoint, model, chunk and batch settings currently live at the top of the script; adjust them before building another environment. After replacing SQLite, rebuild the matching passage collection and update configuration; indexes from different build IDs cannot be mixed.
+The offline [build-passages.py](build-passages.py) builder accepts `--database`, `--embedding-url`, `--chroma-url`, `--model`, required `--model-revision`, and `--kind document|passage`. Document input combines title, description and a bounded body overview; passage input combines title, section and body, with 1200 Unicode characters and 120-character overlap. New collection names include the source build and a model/input fingerprint; resume requires identical metadata. The builder never selects a serving release. Existing collections remain usable in legacy mode, which checks build, source hashes and dimensions but cannot establish a missing model revision.
 
 ## Local Harness
 
@@ -74,7 +75,7 @@ The original local-index group is retained as `.dsh-build/environment-policy-loc
 
 ## HTTP API
 
-`GET /health` requires no token and returns health and database build identity. `GET /v1/policy/manifest` returns the complete build manifest and requires `Authorization: Bearer <token>`. `POST /v1/policy/search` uses the same authentication and accepts this request:
+`GET /health` requires no token and reports SQLite readiness, build identity, last semantic state, and legacy/manifest verification. It does not probe the model. Authenticated `GET /v1/policy/status` checks collection compatibility without inference and explicitly marks embedding as not probed. A ready collection status does not prove model availability. `GET /v1/policy/manifest` returns the complete build manifest and requires `Authorization: Bearer <token>`. `POST /v1/policy/search` uses the same authentication and accepts this request:
 
 ```json
 {
@@ -108,6 +109,15 @@ Of the 90 older baseline questions, 72 meet expected-title or presence-of-result
 
 ## Updates and rollback
 
-Upload a replacement database under a temporary filename and verify SHA-256, then stop this project's container, retain the old database, replace the file, and restart. Never overwrite the SQLite file in use. Check health, manifest, and representative queries; restore the old file and corresponding code version if validation fails.
+Store a replacement SQLite snapshot under a new filename in `POLICY_DATA_DIR`; never overwrite the open file. Build both matching collections offline, then validate the complete release. Substitute collection names printed by the builder and the actual snapshot filename. `release.py` checks every source/span association and expected coverage; incomplete indexes, changed hashes, model revisions or split rules prevent publication.
+
+```bash
+python3 release.py prepare --database /srv/e-agent/policy-data/policy-build-a.sqlite --documents DOCUMENT_COLLECTION --passages PASSAGE_COLLECTION --chroma-url http://127.0.0.1:8002 --output /srv/e-agent/policy-data/release-a.json
+python3 release.py activate --manifest /srv/e-agent/policy-data/release-a.json --chroma-url http://127.0.0.1:8002 --env-output /srv/e-agent/policy-data/selected.env
+```
+
+Preparation writes a new manifest beside its snapshot. Activation revalidates the complete pairing before atomically replacing only `selected.env`; it does not invoke Docker. The manifest records SQLite build/hash, both collections and counts, embedding revision/dimension, distance metrics, input versions, and chunk version. Pin model container weights to that revision separately; the embeddings protocol cannot prove which weights a model alias serves.
+
+After validation and representative query checks, an operator recreates only the API with `docker compose --env-file .env --env-file /srv/e-agent/policy-data/selected.env up -d --wait --no-deps --force-recreate policy-api`. The second env file selects the snapshot and `/app/data/release-a.json`; the API derives both collections from the manifest. Rollback uses `release.py activate` with a retained manifest and the same API command, selecting the previous SQLite and both indexes together. Keep referenced snapshots, collections, credentials and compatible code for rollback. Production deployment is separate from local fixture tests and requires post-merge validation.
 
 The DGX service binds only to its LAN address. HTTP is intended for a trusted LAN; use HTTPS or an SSH tunnel before crossing an untrusted network. The token grants query access and should be distributed privately to collaborators.

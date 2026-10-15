@@ -1,5 +1,5 @@
 import { PolicyDatabase, type PolicyContentSearchHit, type PolicySourceRow } from './database.ts'
-import type { PolicyDescriptionSearchRequest, PolicyExactSearchRequest, PolicyQueryHit, PolicyQueryStore, PolicyReviewStatus, PolicyTemporalStatus, PolicyTextSearchRequest } from './query.ts'
+import type { PolicyCandidate, PolicyDescriptionSearchRequest, PolicyEvidenceRead, PolicyExactSearchRequest, PolicyQueryHit, PolicyQueryStore, PolicyReviewStatus, PolicyTemporalStatus, PolicyTextSearchRequest } from './query.ts'
 
 function reviewStatus(row: PolicySourceRow): PolicyReviewStatus {
   return row.descriptionStatus ?? 'pending-review'
@@ -22,6 +22,7 @@ function temporalStatus(value: string | undefined): PolicyTemporalStatus {
 export function queryHit(row: PolicyContentSearchHit): PolicyQueryHit {
   return {
     recordKey: row.recordKey,
+    sourceHash: row.sourceHash,
     sourceId: row.sourceId,
     relativePath: row.relativePath,
     ...(row.title === undefined ? {} : { title: row.title }),
@@ -48,6 +49,15 @@ export function queryHit(row: PolicyContentSearchHit): PolicyQueryHit {
   }
 }
 
+/**
+ * Keep only an indexed source address and ranking score during candidate recall.
+ * @param row - SQLite index match.
+ * @returns candidate without citation text or copied metadata.
+ */
+export function queryCandidate(row: PolicyContentSearchHit): PolicyCandidate {
+  return { recordKey: row.recordKey, unitId: row.unitId, sourceHash: row.sourceHash, score: row.score }
+}
+
 /** Read-only query adapter over the committed SQLite policy build. */
 export class SqliteQueryStore implements PolicyQueryStore {
   protected readonly database: PolicyDatabase
@@ -60,7 +70,35 @@ export class SqliteQueryStore implements PolicyQueryStore {
     return this.database.getTitles()
   }
 
-  findExact(request: PolicyExactSearchRequest): Promise<readonly PolicyQueryHit[]> {
+  readEvidence(candidates: readonly PolicyCandidate[]): Promise<PolicyEvidenceRead> {
+    const keys = [...new Map(candidates.map(candidate => [JSON.stringify([candidate.recordKey, candidate.unitId]), candidate])).values()]
+    const rows: PolicyContentSearchHit[] = []
+    for (let offset = 0; offset < keys.length; offset += 100) rows.push(...this.database.readUnitsById(keys.slice(offset, offset + 100)))
+    const units = new Map(rows.map(row => [JSON.stringify([row.recordKey, row.unitId]), row]))
+    const rejected = { missingUnit: 0, sourceMismatch: 0, invalidSpan: 0 }
+    const resolved: Array<{ candidate: PolicyCandidate; hit: PolicyQueryHit }> = []
+    for (const candidate of candidates) {
+      const row = units.get(JSON.stringify([candidate.recordKey, candidate.unitId]))
+      if (row === undefined) { rejected.missingUnit++; continue }
+      if (row.sourceHash !== candidate.sourceHash) { rejected.sourceMismatch++; continue }
+      const hit = queryHit(row)
+      if (candidate.start === undefined && candidate.end === undefined) { resolved.push({ candidate, hit }); continue }
+      const characters = Array.from(row.text)
+      const start = candidate.start ?? 0
+      const end = candidate.end ?? characters.length
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > characters.length) {
+        rejected.invalidSpan++; continue
+      }
+      const prefix = characters.slice(0, start).join('')
+      const text = characters.slice(start, end).join('')
+      resolved.push({ candidate, hit: { ...hit, text,
+        lineStart: row.lineStart + prefix.split('\n').length - 1,
+        lineEnd: row.lineStart + (prefix + text).split('\n').length - 1 } })
+    }
+    return Promise.resolve({ resolved, rejected })
+  }
+
+  findExact(request: PolicyExactSearchRequest): Promise<readonly PolicyCandidate[]> {
     const filters = request.plan.filters
     const sources = this.database.findSourcesByExact({
       ...(filters.title === undefined ? {} : { title: filters.title }),
@@ -71,21 +109,21 @@ export class SqliteQueryStore implements PolicyQueryStore {
         : {}),
     }, request.limit)
     if (request.plan.intent === 'overview' && filters.articleLabel === undefined) {
-      return Promise.resolve(this.database.readOverviewUnits(sources.map(source => source.recordKey), request.limit).map(queryHit))
+      return Promise.resolve(this.database.readOverviewUnits(sources.map(source => source.recordKey), request.limit).map(queryCandidate))
     }
     const hits = this.database.readContentUnits({
       recordKeys: sources.map(source => source.recordKey),
       ...(filters.articleLabel === undefined ? {} : { label: filters.articleLabel }),
       limit: request.limit,
-    }).map(queryHit)
+    }).map(queryCandidate)
     return Promise.resolve(hits)
   }
 
-  searchTitles(topic: string, limit: number, label?: string): Promise<readonly PolicyQueryHit[]> {
-    return Promise.resolve(this.database.searchTitles(topic, limit, label).map(queryHit))
+  searchTitles(topic: string, limit: number, label?: string): Promise<readonly PolicyCandidate[]> {
+    return Promise.resolve(this.database.searchTitles(topic, limit, label).map(queryCandidate))
   }
 
-  searchContent(request: PolicyTextSearchRequest): Promise<readonly PolicyQueryHit[]> {
+  searchContent(request: PolicyTextSearchRequest): Promise<readonly PolicyCandidate[]> {
     const constrained = request.plan.filters.title === undefined && request.plan.filters.documentNumber === undefined
       ? request.recordKeys
       : this.database.findSourcesByExact({ ...(request.plan.filters.title === undefined ? {} : { title: request.plan.filters.title }),
@@ -95,7 +133,7 @@ export class SqliteQueryStore implements PolicyQueryStore {
     const hits = this.database.searchContent(request.query, {
       limit: request.limit,
       ...(constrained === undefined ? {} : { recordKeys: constrained }),
-    }).map(queryHit)
+    }).map(queryCandidate)
     return Promise.resolve(hits)
   }
 

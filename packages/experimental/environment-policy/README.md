@@ -1,6 +1,6 @@
 ---
 description: "Build and query a local national environment-policy evidence index."
-kind: "package-plugin"
+kind: "package-reference"
 ---
 
 # @deepseek-ai/dsh-experimental-environment-policy
@@ -158,7 +158,7 @@ The prompt section and tool schema are stable for one plugin configuration, so t
 - PDF matching currently checks the `extracted` directory containing each `full.md`; a source without a sibling PDF receives a quality flag.
 - The query service retains conservative temporal assessment fields for internal callers, while the model tool omits those workflow fields and reports catalog legal-status labels when asked.
 - SQLite retrieval and description validation do not require an external API. Description generation uses a caller-supplied adapter, including a child agent; all outputs remain subject to citation, hash, schema and status validation.
-- SQLite supports independent exact and lexical retrieval. Optional DGX hybrid retrieval requires Chroma and an embedding service. Vector timeouts and failures return lexical evidence from the same SQLite build with a degradation warning; configuration, indexing and timing fields are documented in the [deployment guide](deploy/README.md).
+- SQLite owns original policy text and metadata; lexical indexes and Chroma vectors are recall aids. Channels return addresses, and the service reads and validates source units in batches before producing citations. Optional DGX hybrid retrieval degrades to lexical evidence when vectors fail; source/index release validation, diagnostics and rollback are documented in the [deployment guide](deploy/README.md).
 
 <a id="dev-note"></a>
 ### Dev Note

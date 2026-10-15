@@ -9,6 +9,7 @@ on:
       - 'apps/cli/config/examples/environment-policy-dgx.patch.yml'
       - 'apps/cli/package.json'
       - 'apps/cli/tests/profiles/web/**'
+      - 'packages/experimental/environment-policy/**'
       - 'pnpm-lock.yaml'
       - '.github/workflows/dgx-harness.yml'
   pull_request:
@@ -19,6 +20,7 @@ on:
       - 'apps/cli/config/examples/environment-policy-dgx.patch.yml'
       - 'apps/cli/package.json'
       - 'apps/cli/tests/profiles/web/**'
+      - 'packages/experimental/environment-policy/**'
       - 'pnpm-lock.yaml'
       - '.github/workflows/dgx-harness.yml'
 

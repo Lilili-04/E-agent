@@ -3,6 +3,8 @@
 !package.json
 !pnpm-lock.yaml
 !pnpm-workspace.yaml
+!patches/
+!patches/**
 !tsconfig*.json
 !tsdown.config.ts
 !LICENSE

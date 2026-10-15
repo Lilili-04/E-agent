@@ -3,11 +3,11 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.en.md
 /national-environmental-policy-q-a-system-built-on-dsh:
-  en: 7c1441a2bf4913aa
-  zh: 0bb7b6e3143adc60
+  en: 248c3d315a229a87
+  zh: a8a2aecf62ec0489
 /national-environmental-policy-q-a-system-built-on-dsh/system-flow:
-  en: c9907283a00ced50
-  zh: 04620da81b01998c
+  en: 10e2664a4053f19d
+  zh: 69fc070134bf4c34
 /national-environmental-policy-q-a-system-built-on-dsh/capabilities-and-corpus:
   en: 9afde84da4b4d35c
   zh: deab2c769610429a
@@ -33,8 +33,8 @@
   en: 1712f17b7f311444
   zh: d99e1df9cba3a43a
 /national-environmental-policy-q-a-system-built-on-dsh/related-documentation:
-  en: 58e2a7dc7612a7a6
-  zh: 2c939dbe5ad39a07
+  en: fe0c0b5e4ae29d09
+  zh: 806c7a366703b7d3
 /national-environmental-policy-q-a-system-built-on-dsh/license:
   en: f370bf50e60d7591
   zh: ff42d2fc354c5513

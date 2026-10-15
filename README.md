@@ -4,9 +4,9 @@
 
 本项目基于 DeepSeek Harness（DSH），提供国家级中文环境政策法规、标准、规划和政策文件问答。用户通过 Harness 提问，系统检索法规原文，再由模型组织带来源的回答；Harness 可运行在本地或 DGX 上。
 
-**默认部署方式：本地运行 Harness，DGX 上通过 Docker 运行检索 API、只读 SQLite、Chroma 向量数据库和 Qwen3 embedding 服务。** 使用远程库的协作者不需要在自己的电脑上保存数据库或 MinerU 解析结果。
+**默认部署方式：本地运行 Harness，DGX 上的独立检索 API 只读访问 SQLite 政策主库，使用 Chroma 语义索引和 Qwen3 embedding 服务辅助找资料。** 使用远程库的协作者不需要在自己的电脑上保存数据库或 MinerU 解析结果。
 
-也可将 Harness 单独部署到 DGX，浏览器直接访问服务器页面。Harness、检索数据库、向量库及模型保持独立容器和数据目录；Harness 镜像不包含数据库、语料或模型权重。
+也可将 Harness 单独部署到 DGX，浏览器直接访问服务器页面。Harness、检索服务、Chroma 和模型分别运行；SQLite 政策数据独立持久化，由检索服务只读挂载。Harness 镜像不包含数据库、语料或模型权重。
 
 ## 系统链路
 
@@ -14,12 +14,13 @@
 User → Harness (local / DGX) → policy_search → DGX retrieval API → Source evidence → Agent
      ← Cited answer  ← Source evidence ← Query planning / retrieval
 
-DGX retrieval API
-  ├─ SQLite: exact lookup / body BM25 / source text
-  └─ Qwen3 embedding → Chroma: document vectors / passage vectors → SQLite source text
+Retrieval API: query planning → candidate recall → address deduplication
+  ├─ Exact / lexical channel: title, metadata and body BM25 indexes
+  └─ Semantic channel: Qwen3 embedding → Chroma document / passage indexes
+Merged candidate IDs → SQLite batch source read → validation / rank fusion → bounded citation evidence
 ```
 
-Harness 负责界面、Agent、模型调用和来源展示；独立检索服务负责查询规划、检索、排序及证据限长。数据库保存法规原文、元数据、正文单元、description 和检索词。模型接收有限原文证据，description 仅辅助发现文档，不能替代原文。
+架构按“原文数据层＋多种检索索引＋统一检索服务”组织。SQLite 是政策正文、元数据和摘要的主库；其中的关键词索引与 Chroma 向量索引提供不同召回通道。检索 API 是协调这些通道的服务，不是数据库。各通道返回候选标识，API 去重后批量读取 SQLite、核对原文哈希及片段位置，再生成引用证据。Chroma 中的文本副本与 description 均不能替代原文。Harness 负责界面、Agent 和模型调用；逻辑分层与容器数量并不一一对应。
 
 ## 当前能力和语料
 
@@ -139,6 +140,7 @@ node_modules/.bin/tsc.cmd -p packages/experimental/environment-policy/tsconfig.j
 
 ## 相关文档
 
+- [检索链路改造效果与复现方法](docs/user/guide/policy-retrieval-evaluation.zh.md)
 - [DGX 完整应用部署、持久化和更新](docs/user/guide/dgx-deployment.zh.md)
 - [DGX Docker 部署、接口和回滚](packages/experimental/environment-policy/deploy/README.zh.md)
 - [环境政策法规插件](packages/experimental/environment-policy/README.zh.md)

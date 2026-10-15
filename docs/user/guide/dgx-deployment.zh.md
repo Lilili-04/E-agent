@@ -2,7 +2,7 @@
 
 [English](dgx-deployment.md) | 中文
 
-本指南在 DGX 上用独立 Docker 容器运行 Web 界面和 Agent。浏览器连接该容器；政策检索、SQLite、Chroma、embedding 和回答模型仍作为独立服务维护。配置位于 [deploy/dgx](../../../deploy/dgx)，可复用的 Agent 预设位于 [environment-policy-dgx.patch.yml](../../../apps/cli/config/examples/environment-policy-dgx.patch.yml)。
+本指南在 DGX 上用独立 Docker 容器运行 Web 界面和 Agent。浏览器连接该容器；检索 API 协调基于 SQLite 原文数据和 Chroma 索引的关键词、语义通道。SQLite 是嵌入式原文数据库，不是网络服务；逻辑职责与容器部署分别说明。配置位于 [deploy/dgx](../../../deploy/dgx)，可复用的 Agent 预设位于 [environment-policy-dgx.patch.yml](../../../apps/cli/config/examples/environment-policy-dgx.patch.yml)。
 
 ## 部署结构
 
@@ -11,16 +11,16 @@ Harness 镜像只包含应用代码和依赖，不包含语料、SQLite 文件�
 | 组件 | 容器 | 持久化数据 / 接口 |
 | --- | --- | --- |
 | Web 界面和 Agent | 新的 Harness Compose 项目 | 独立的 Harness 状态和工作区目录；浏览器端口 3080 |
-| 检索 API 和 SQLite | 已有 `e-agent-policy-api` | 自己的只读 SQLite 挂载；Docker 内部 HTTP 8080 |
-| 向量数据库 | 已有 `chroma` | 自己的持久化索引目录；Docker 内部 HTTP 8000 |
+| 检索服务 | 已有 `e-agent-policy-api` | 协调召回，只读打开独立持久化的 SQLite 原文快照；Docker 内部 HTTP 8080 |
+| 语义检索索引 | 已有 `chroma` | 独立目录保存可重建的向量和原文标识；Docker 内部 HTTP 8000 |
 | Embedding 模型 | 已有 `vllm-qwen3-embedding-4b` | 自己的模型目录；Docker 内部 HTTP 8000 |
 | 回答模型 | 已有 `vllm-qwen38-27b` | 自己的模型目录；Docker 内部 OpenAI 兼容 HTTP 8000 |
 
 SQLite 是嵌入式数据库，由独立的检索 API 容器只读打开，不对外暴露 SQL 数据库端口。Harness 不挂载该数据库。更新或停止 Harness Compose 项目不会更新、重启或删除上述四个已有服务及其数据。它们的配置仍由[检索部署指南](../../../packages/experimental/environment-policy/deploy/README.zh.md)维护。
 
 ```text
-Browser → Harness container → policy API container → SQLite source evidence
-                  │                    └→ embedding container → Chroma container
+Browser → Harness container → policy API container → candidate recall / fusion → SQLite source evidence
+                  │                    └→ lexical indexes + embedding / Chroma semantic indexes
                   └→ Qwen generation container → cited answer
 ```
 

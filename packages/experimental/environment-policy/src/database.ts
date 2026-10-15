@@ -702,11 +702,27 @@ export class PolicyDatabase {
 
   /**
    * Read precise unit ids from the immutable source index.
-   * @param keys - source record and unit identifiers, capped at 100 lookups.
+   * @param keys - source record and unit identifiers, capped at 100 rows in one SQL query.
    * @returns matching authoritative units in request order.
    */
   readUnitsById(keys: readonly { recordKey: string; unitId: string }[]): readonly PolicyContentSearchHit[] {
-    return keys.slice(0, 100).flatMap(key => this.readContentUnits({ recordKeys: [key.recordKey], unitId: key.unitId, limit: 1 }))
+    const selected = keys.slice(0, 100)
+    if (selected.length === 0) return []
+    const rows = this.#database.prepare(`
+      WITH requested(record_key, unit_id, ordinal) AS (VALUES ${selected.map((_, index) => `(?, ?, ${index})`).join(', ')})
+      SELECT s.record_key, s.source_id, s.relative_path, s.source_hash,
+        m.title, m.document_number, m.document_type, m.jurisdiction, m.legal_status, m.publish_date,
+        m.effective_from, m.effective_to, m.metadata_status, d.status AS description_status,
+        u.unit_id, u.kind, u.label, u.line_start, u.line_end, u.section_path_json, u.text,
+        0 AS matched_terms, 0 AS document_length, '' AS matched_term_dfs
+      FROM requested r JOIN content_units u ON u.record_key = r.record_key AND u.unit_id = r.unit_id
+      JOIN sources s ON s.record_key = u.record_key JOIN metadata m ON m.record_key = u.record_key
+      LEFT JOIN descriptions d ON d.record_key = u.record_key
+      ORDER BY r.ordinal
+    `).all(...selected.flatMap(key => [key.recordKey, key.unitId])).map(sqlSearchRow)
+    return rows.map(row => ({ ...sourceRow(row), unitId: row.unit_id, kind: row.kind,
+      ...(row.label === null ? {} : { label: row.label }), lineStart: row.line_start, lineEnd: row.line_end,
+      sectionPath: jsonStrings(row.section_path_json), text: row.text, score: 0 }))
   }
 
   /**
@@ -762,29 +778,37 @@ export class PolicyDatabase {
     const { totalUnits, averageLength } = this.#searchStatistics
     const rows = this.#database.prepare(`
       WITH term_stats AS (
-        SELECT term, COUNT(DISTINCT record_key || char(0) || unit_id) AS document_frequency
+        SELECT term, COUNT(*) AS document_frequency
         FROM content_search_terms
         WHERE term IN (${termSlots})
         GROUP BY term
+      ), candidate_terms AS MATERIALIZED (
+        SELECT t.record_key, t.unit_id, COUNT(*) AS matched_terms,
+          group_concat(t.term || '=' || term_stats.document_frequency, '|') AS matched_term_dfs
+        FROM content_search_terms t JOIN term_stats ON term_stats.term = t.term
+        WHERE t.term IN (${termSlots}) ${recordPredicate}
+        GROUP BY t.record_key, t.unit_id
+      ), selected AS MATERIALIZED (
+        SELECT t.* FROM candidate_terms t
+        JOIN sources s ON s.record_key = t.record_key
+        JOIN content_units u ON u.record_key = t.record_key AND u.unit_id = t.unit_id
+        ORDER BY t.matched_terms DESC, s.relative_path, u.line_start
+        LIMIT ?
       )
       SELECT s.record_key, s.source_id, s.relative_path, s.source_hash,
         m.title, m.document_number, m.document_type, m.jurisdiction, m.legal_status, m.publish_date,
         m.effective_from, m.effective_to, m.metadata_status,
         d.status AS description_status, u.unit_id, u.kind, u.label, u.line_start, u.line_end,
-        u.section_path_json, u.text, COUNT(DISTINCT t.term) AS matched_terms,
+        u.section_path_json, u.text, t.matched_terms,
         (SELECT COUNT(*) FROM content_search_terms AS length_terms
          WHERE length_terms.record_key = t.record_key AND length_terms.unit_id = t.unit_id) AS document_length,
-        group_concat(t.term || '=' || term_stats.document_frequency, '|') AS matched_term_dfs
-      FROM content_search_terms t
-      JOIN term_stats ON term_stats.term = t.term
+        t.matched_term_dfs
+      FROM selected t
       JOIN content_units u ON u.record_key = t.record_key AND u.unit_id = t.unit_id
       JOIN sources s ON s.record_key = t.record_key
       JOIN metadata m ON m.record_key = t.record_key
       LEFT JOIN descriptions d ON d.record_key = t.record_key
-      WHERE t.term IN (${termSlots}) ${recordPredicate}
-      GROUP BY t.record_key, t.unit_id
-      ORDER BY matched_terms DESC, s.relative_path, u.line_start
-      LIMIT ?
+      ORDER BY t.matched_terms DESC, s.relative_path, u.line_start
     `).all(...terms, ...terms, ...recordKeys, Math.min(200, limit * 4)).map(sqlSearchRow)
     const normalizedQuery = normalizeSearchText(query).replace(/\s+/gu, '')
     return rows.map(row => ({
