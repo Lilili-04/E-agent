@@ -7,7 +7,7 @@ root="$(mktemp -d "${TMPDIR:-/tmp}/e-agent-harness-smoke.XXXXXX")"
 project="e-agent-smoke-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
 compose_file="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/docker-compose.yml"
 export HARNESS_IMAGE="$image" HARNESS_BIND_ADDRESS=127.0.0.1 HARNESS_PORT=0
-export HARNESS_TRUSTED_HOSTS=127.0.0.1 POLICY_RETRIEVAL_NETWORK="$project"
+export HARNESS_TRUSTED_HOSTS=127.0.0.1:3080 POLICY_RETRIEVAL_NETWORK="$project"
 export HARNESS_SOURCE_REVISION=0000000 # Fixture only; this smoke never builds an image.
 export HARNESS_STATE_DIR="$root/state" HARNESS_WORKSPACE_DIR="$root/workspace"
 export POLICY_API_TOKEN_FILE="$root/policy-token" QWEN_API_KEY_FILE="$root/qwen-key"
@@ -36,11 +36,27 @@ docker network create "$project" >/dev/null
 compose config --quiet
 compose up --no-build --detach --wait --wait-timeout 180 harness
 docker run --rm --entrypoint sh "$image" -c '
-    test ! -e /app/.env && test ! -e /app/.dsh-build && test ! -e /app/data && test ! -e /app/.git &&
+    test ! -e /app/.env && test ! -e /app/data && test ! -e /app/.git &&
+    test -f /app/.dsh-build/client-build-environment.json &&
+    test -z "$(find /app/.dsh-build -mindepth 1 ! -path /app/.dsh-build/client-build-environment.json -print -quit)" &&
     test -f /app/vitest.expected.config.ts && test -f /app/vitest.shared.ts &&
     test -f /app/snapshots/session/session-query-spill/resolve-spill-command.mjs &&
     test -f /app/snapshots/session/session-query-spill/resolve-spill-command.d.mts &&
     test -z "$(find /app/snapshots -name "*.jsonl" -print -quit)"
 '
-compose exec -T harness node -e "fetch('http://127.0.0.1:3080/').then(async r=>{if(!r.ok||!(await r.text()).includes('__DSH_BOOT__'))process.exit(1)}).catch(()=>process.exit(1))"
+compose logs --no-color harness | compose exec -T harness node --input-type=module -e '
+    import assert from "node:assert/strict";
+    import { readFileSync } from "node:fs";
+    const base = "http://127.0.0.1:3080/";
+    assert.equal((await fetch(base)).status, 401);
+    const launch = readFileSync(0, "utf8").match(/http:\/\/127\.0\.0\.1:3080\/\?token=[A-Za-z0-9_-]+/);
+    assert.ok(launch, "Missing authenticated startup URL");
+    const login = await fetch(launch[0], { redirect: "manual" });
+    assert.equal(login.status, 303);
+    const cookie = login.headers.get("set-cookie")?.split(";", 1)[0];
+    assert.ok(cookie, "Missing authenticated browser cookie");
+    const page = await fetch(base, { headers: { cookie } });
+    assert.equal(page.status, 200);
+    assert.ok((await page.text()).includes("__DSH_BOOT__"));
+'
 echo 'Harness image smoke passed; database and model services were not started.'

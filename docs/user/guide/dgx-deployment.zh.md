@@ -48,6 +48,8 @@ docker network inspect policy-retrieval
 
 构建上下文包含 Host 类型检查所需的快照辅助模块及其类型声明，以及镜像启动测试使用的 Vitest 配置；录制的会话数据仍被排除。修改 `.dockerignore` 时应保留这些构建输入。
 
+应用文件系统保持只读。原生模块加载器和子进程辅助程序需要加载或执行临时文件，因此 `/tmp` 的 tmpfs 允许执行；沿用 Docker 对该挂载默认设置的 `noexec` 会导致启动失败。Compose 配置应保留 `/tmp:exec,mode=1777`。
+
 ```bash
 cd deploy/dgx
 export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
@@ -78,7 +80,7 @@ docker compose up -d --wait --no-deps harness
 
 ## 验证和排查
 
-分别检查页面、一次政策查询，以及已有检索和模型服务。容器健康检查只验证 Web 监听，不代表下游服务或模型凭据一定可用。
+分别检查页面、一次政策查询，以及已有检索和模型服务。容器健康检查要求未认证的首页请求返回 HTTP 401，在保留浏览器认证的同时验证 Web 监听，但不代表下游服务或模型凭据一定可用。镜像冒烟测试使用临时启动令牌换取浏览器 Cookie，并验证认证后的页面返回 HTTP 200。
 
 | 现象 | 检查项 |
 | --- | --- |
