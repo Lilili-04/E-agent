@@ -183,8 +183,11 @@ export class HybridQueryStore extends SqliteQueryStore {
       const docUnits = recordKeys.length === 0 ? []
         : this.database.searchContent(request.plan.freeText, { recordKeys, limit: request.limit })
       const docRanks = new Map(documents.map(item => [item.recordKey, item]))
-      const candidates: PolicyCandidate[] = docUnits.filter(row => docRanks.get(row.recordKey)?.sourceHash === row.sourceHash)
-        .map(row => ({ ...queryCandidate(row), score: 100 / (60 + (docRanks.get(row.recordKey)?.rank ?? 60)) }))
+      const candidates: PolicyCandidate[] = docUnits.flatMap((row) => {
+        const document = docRanks.get(row.recordKey)
+        return document === undefined ? [] : [{ ...queryCandidate(row),
+          sourceHash: document.sourceHash, score: 100 / (60 + document.rank) }]
+      })
       for (const item of passages) {
         if (item.unitId === undefined) continue
         candidates.push({ recordKey: item.recordKey, unitId: item.unitId, sourceHash: item.sourceHash,

@@ -96,6 +96,16 @@ describe('DGX hybrid retrieval', () => {
     expect(evidence.rejected.sourceMismatch).toBeGreaterThan(0)
   })
 
+  it('counts stale document-vector associations when no passage collection is configured', async () => {
+    const { db, config, metadata } = fixture()
+    metadata.source_hash = 'old-document-source'
+    const { passageCollection: _passages, ...documentOnly } = config
+    const result = await queryPolicies(new HybridQueryStore(db, documentOnly), '粪水如何处理')
+    expect(result.diagnostics?.rejected.sourceMismatch).toBeGreaterThan(0)
+    expect(result.warnings).toContain('candidate-source-association-rejected')
+    expect(result.results.length).toBeGreaterThan(0)
+  })
+
   it('falls back to lexical evidence within the semantic timeout and retries failed embeddings', async () => {
     const { db, config } = fixture()
     const stalled = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
