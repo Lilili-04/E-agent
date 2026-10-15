@@ -52,3 +52,9 @@ native/system/test/bin/
 
 # Local service startup diagnostics
 /service-logs/
+
+# DGX application deployment state and credentials
+/deploy/dgx/.env
+/deploy/dgx/secrets/
+/deploy/dgx/state/
+/deploy/dgx/workspace/

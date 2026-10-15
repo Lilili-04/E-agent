@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for dgx-deployment.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/user/guide/dgx-deployment.md
+/run-the-environment-policy-harness-on-dgx:
+  en: d94c58f2c48d8d6f
+  zh: 0d31d734f824da25
+/run-the-environment-policy-harness-on-dgx/deployment-layout:
+  en: 829c09fa982e5358
+  zh: 1939d423fda8eb7f
+/run-the-environment-policy-harness-on-dgx/prepare-the-server:
+  en: 472b04ad08d99179
+  zh: d9d576645ed5021c
+/run-the-environment-policy-harness-on-dgx/build-and-start:
+  en: 5155376612226fd1
+  zh: eb8ecf504f50ff11
+/run-the-environment-policy-harness-on-dgx/restart-update-and-rollback:
+  en: 935e6753bf734180
+  zh: adcb324836153695
+/run-the-environment-policy-harness-on-dgx/verify-and-troubleshoot:
+  en: 82334fb31286629b
+  zh: 0599e32d1f960aae

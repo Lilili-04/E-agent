@@ -2,14 +2,16 @@
 
 English | [中文](README.zh.md)
 
-This project uses DeepSeek Harness (DSH) to answer questions about national-level Chinese environmental laws, regulations, standards, plans, and policy documents. Users ask questions in local Harness; the system retrieves source passages and the model produces an answer with citations.
+This project uses DeepSeek Harness (DSH) to answer questions about national-level Chinese environmental laws, regulations, standards, plans, and policy documents. Users ask questions through Harness, which runs locally or on DGX; the system retrieves source passages and the model produces an answer with citations.
 
 **The default deployment runs Harness locally and the retrieval API, read-only SQLite, Chroma vector database and Qwen3 embedding service in Docker on DGX.** Collaborators using the remote service do not need a local database or MinerU outputs.
+
+Harness can also run separately on DGX, with browsers connecting to the server UI. Harness, the retrieval database, vector database, and models retain separate containers and data directories; the Harness image contains no database, corpus, or model weights.
 
 ## System flow
 
 ```text
-User → Local Harness → policy_search → DGX retrieval API → Source evidence → Local Agent
+User → Harness (local / DGX) → policy_search → DGX retrieval API → Source evidence → Agent
      ← Cited answer  ← Source evidence ← Query planning / retrieval
 
 DGX retrieval API
@@ -17,7 +19,7 @@ DGX retrieval API
   └─ Qwen3 embedding → Chroma: document vectors / passage vectors → SQLite source text
 ```
 
-Local Harness owns the UI, Agent, model calls, and source presentation. DGX owns query planning, retrieval, ranking, and evidence limits. The database stores source text, metadata, content units, descriptions, and search terms. The model receives bounded source evidence; descriptions only assist document discovery and do not replace the source.
+Harness owns the UI, Agent, model calls, and source presentation. The independent retrieval service owns query planning, retrieval, ranking, and evidence limits. The database stores source text, metadata, content units, descriptions, and search terms. The model receives bounded source evidence; descriptions only assist document discovery and do not replace the source.
 
 ## Capabilities and corpus
 
@@ -29,7 +31,18 @@ Local Harness owns the UI, Agent, model calls, and source presentation. DGX owns
 
 The current index contains **494 national documents and 61,455 content units**; the database is approximately **835 MiB**. SQLite files, source corpora, tokens, and machine-specific launch configuration are excluded from Git.
 
-## Existing workspace: start or restart
+## Run the complete application on DGX
+
+Prepare the intranet address, separate state directories, and two credential files using the [DGX application deployment guide](docs/user/guide/dgx-deployment.md), then run in `deploy/dgx`:
+
+```bash
+docker compose build
+docker compose up -d --wait
+```
+
+This Compose project manages only Harness and calls the existing retrieval API and Qwen3.8-27B model through the external `policy-retrieval` network. The separate retrieval API container still mounts SQLite read-only, and Chroma persists its own index. Rebuilding, updating, or stopping Harness does not operate on those database or model containers; a restart needs only `docker compose restart harness`.
+
+## Existing local workspace: start or restart
 
 Run from the repository root:
 
@@ -45,6 +58,8 @@ When dependencies and build artifacts exist, restarting requires only the comman
 
 ## New collaborators: required inputs
 
+Users of an already deployed DGX Web UI need a browser, LAN access, and an authenticated URL supplied privately by the maintainer. They need no local Node installation, database, or model. The following inputs are for local developers.
+
 | Item | How to prepare it |
 | --- | --- |
 | Source code | Clone the Git repository |
@@ -54,7 +69,7 @@ When dependencies and build artifacts exist, restarting requires only the comman
 | Query token | Obtain it privately and save it in a local token file |
 | Launch configuration | Prepare an Agent preset and launch patch for the local checkout |
 
-**A fresh clone does not contain `.dsh-build/`.** The current workspace patch contains absolute source paths and cannot be copied unchanged to another computer. The maintainer can configure a collaborator's preset using the [remote plugin group](packages/experimental/environment-policy/presets/environment-policy-remote.cordis.yml); see the [DGX deployment guide](packages/experimental/environment-policy/deploy/README.md) for configuration details.
+**A fresh clone does not contain `.dsh-build/`.** The current private workspace patch contains absolute source paths and cannot be copied unchanged to another computer. The repository provides a [DGX Agent preset](apps/cli/config/examples/environment-policy-dgx.patch.yml) without machine-specific paths; see the [DGX application deployment guide](docs/user/guide/dgx-deployment.md) for local and container use, or the [remote plugin group](packages/experimental/environment-policy/presets/environment-policy-remote.cordis.yml) when composing only retrieval plugins.
 
 Remote-query collaborators need source code, model configuration, an endpoint, a token, and a launch configuration. **They do not need SQLite, policy_md, or MinerU outputs.** Corpus processing and index-building work require the corresponding data separately.
 
@@ -73,6 +88,8 @@ After preparing the local launch configuration, use the earlier launch command. 
 packages/experimental/environment-policy/src/       Query planner, SQLite and remote providers, tool
 packages/experimental/environment-policy/deploy/    Docker API, Compose and deployment guide
 packages/experimental/environment-policy/presets/   Local and remote plugin groups
+deploy/dgx/                                        Separate Harness container and persistent state
+apps/cli/config/examples/environment-policy-dgx.patch.yml  Portable QA preset and Qwen route
 scripts/environment-policy-build-index.ts           Index builder
 data/README.md                                     Index inputs and local database preparation
 .dsh-build/                                         Machine-specific patches and token; ignored by Git
@@ -117,10 +134,11 @@ Tests cover query planning, SQLite, the real HTTP API, authentication, and remot
 
 ## Current scope
 
-The corpus covers national documents; provincial documents are not included. Legal-status answers use catalog metadata, and the system does not independently determine legal validity. Exact queries use SQLite; ordinary questions run lexical and vector retrieval concurrently, returning lexical evidence after semantic timeouts. The DGX API container does not use a GPU, while a separate GPU service provides embeddings; local Harness still configures the answer model. See the [deployment guide](packages/experimental/environment-policy/deploy/README.md) for settings and limitations.
+The corpus covers national documents; provincial documents are not included. Legal-status answers use catalog metadata, and the system does not independently determine legal validity. Exact queries use SQLite; ordinary questions run lexical and vector retrieval concurrently, returning lexical evidence after semantic timeouts. Harness and the retrieval API use no GPU; independent GPU services provide embeddings and answer generation. Some document-number and date metadata remains malformed; returned evidence or passing functional checks does not guarantee answer accuracy. See the [retrieval deployment guide](packages/experimental/environment-policy/deploy/README.md) for settings and limitations.
 
 ## Related documentation
 
+- [Complete DGX application deployment, persistence, and updates](docs/user/guide/dgx-deployment.md)
 - [DGX Docker deployment, API, and rollback](packages/experimental/environment-policy/deploy/README.md)
 - [Environment-policy package guide](packages/experimental/environment-policy/README.md)
 - [Data and index preparation](data/README.md)

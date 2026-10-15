@@ -3,20 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.en.md
 /national-environmental-policy-q-a-system-built-on-dsh:
-  en: f2bcb5ef95c58f6d
-  zh: 5d8bf59d6e56d640
+  en: 7c1441a2bf4913aa
+  zh: 0bb7b6e3143adc60
 /national-environmental-policy-q-a-system-built-on-dsh/system-flow:
-  en: d1983dc204418d34
-  zh: 059117d15b8e30b1
+  en: c9907283a00ced50
+  zh: 04620da81b01998c
 /national-environmental-policy-q-a-system-built-on-dsh/capabilities-and-corpus:
   en: 9afde84da4b4d35c
   zh: deab2c769610429a
-/national-environmental-policy-q-a-system-built-on-dsh/existing-workspace-start-or-restart:
-  en: 2eef1eea1895e70b
-  zh: 6de326f05d5462f4
+/national-environmental-policy-q-a-system-built-on-dsh/run-the-complete-application-on-dgx:
+  en: 66cefbadcefeee51
+  zh: ce68ac541b669955
+/national-environmental-policy-q-a-system-built-on-dsh/existing-local-workspace-start-or-restart:
+  en: 2b2335fc546c7edc
+  zh: b237b7045f2513ae
 /national-environmental-policy-q-a-system-built-on-dsh/new-collaborators-required-inputs:
-  en: 1288633cd722c6d0
-  zh: b592987cd897bcd4
+  en: 38649c9a29025cc9
+  zh: 6eba0b6d4a0d585d
 /national-environmental-policy-q-a-system-built-on-dsh/layout-and-deployment-documentation:
   en: 19396bef9aa66c9e
   zh: 44c10539c2a3cad8
@@ -27,11 +30,11 @@
   en: 5a6f26fdc4d66d20
   zh: 68325aeebb4c395a
 /national-environmental-policy-q-a-system-built-on-dsh/current-scope:
-  en: 76e160253abec1fb
-  zh: 5097f9a11cc372d7
+  en: 1712f17b7f311444
+  zh: d99e1df9cba3a43a
 /national-environmental-policy-q-a-system-built-on-dsh/related-documentation:
-  en: d6dc36d0918ca97d
-  zh: 21f4606d7218aef8
+  en: 58e2a7dc7612a7a6
+  zh: 2c939dbe5ad39a07
 /national-environmental-policy-q-a-system-built-on-dsh/license:
   en: f370bf50e60d7591
   zh: ff42d2fc354c5513

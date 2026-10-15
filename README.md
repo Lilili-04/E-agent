@@ -2,14 +2,16 @@
 
 [English](README.en.md) | [中文副本](README.zh.md)
 
-本项目基于 DeepSeek Harness（DSH），提供国家级中文环境政策法规、标准、规划和政策文件问答。用户在本地 Harness 中提问，系统检索法规原文，再由模型组织带来源的回答。
+本项目基于 DeepSeek Harness（DSH），提供国家级中文环境政策法规、标准、规划和政策文件问答。用户通过 Harness 提问，系统检索法规原文，再由模型组织带来源的回答；Harness 可运行在本地或 DGX 上。
 
 **默认部署方式：本地运行 Harness，DGX 上通过 Docker 运行检索 API、只读 SQLite、Chroma 向量数据库和 Qwen3 embedding 服务。** 使用远程库的协作者不需要在自己的电脑上保存数据库或 MinerU 解析结果。
+
+也可将 Harness 单独部署到 DGX，浏览器直接访问服务器页面。Harness、检索数据库、向量库及模型保持独立容器和数据目录；Harness 镜像不包含数据库、语料或模型权重。
 
 ## 系统链路
 
 ```text
-User → Local Harness → policy_search → DGX retrieval API → Source evidence → Local Agent
+User → Harness (local / DGX) → policy_search → DGX retrieval API → Source evidence → Agent
      ← Cited answer  ← Source evidence ← Query planning / retrieval
 
 DGX retrieval API
@@ -17,7 +19,7 @@ DGX retrieval API
   └─ Qwen3 embedding → Chroma: document vectors / passage vectors → SQLite source text
 ```
 
-本地 Harness 负责界面、Agent、模型调用和来源展示；DGX 负责查询规划、检索、排序及证据限长。数据库保存法规原文、元数据、正文单元、description 和检索词。模型接收有限原文证据，description 仅辅助发现文档，不能替代原文。
+Harness 负责界面、Agent、模型调用和来源展示；独立检索服务负责查询规划、检索、排序及证据限长。数据库保存法规原文、元数据、正文单元、description 和检索词。模型接收有限原文证据，description 仅辅助发现文档，不能替代原文。
 
 ## 当前能力和语料
 
@@ -29,7 +31,18 @@ DGX retrieval API
 
 当前索引包含 **494 份国家级文件、61,455 个正文单元**，数据库约 **835 MiB**。SQLite、原始语料、令牌和本机启动配置均不随 Git 提交。
 
-## 已有工作区：启动或重启
+## DGX 运行完整应用
+
+按 [DGX 应用部署指南](docs/user/guide/dgx-deployment.zh.md)准备内网地址、独立状态目录和两个凭据文件，再在 `deploy/dgx` 执行：
+
+```bash
+docker compose build
+docker compose up -d --wait
+```
+
+该 Compose 项目只管理 Harness，通过外部 `policy-retrieval` 网络调用已有检索 API 和 Qwen3.8-27B 模型。SQLite 仍由独立检索 API 容器只读挂载，Chroma 独立持久化。重建、更新或停止 Harness 不会操作这些数据库或模型容器；重启只需 `docker compose restart harness`。
+
+## 已有本地工作区：启动或重启
 
 在仓库根目录执行：
 
@@ -45,6 +58,8 @@ pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open
 
 ## 新协作者：需要准备什么
 
+只使用已部署的 DGX 网页时，需要浏览器、内网连接和负责人私密提供的认证地址，无需安装本地 Node、数据库或模型。下面列出本地开发者的准备事项。
+
 | 内容 | 获取方式 |
 | --- | --- |
 | 项目代码 | 克隆 Git 仓库 |
@@ -54,7 +69,7 @@ pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open
 | 查询令牌 | 通过私密渠道获取，保存为本机令牌文件 |
 | 启动配置 | 准备适合本机仓库目录的 Agent preset 和启动 patch |
 
-**新克隆的仓库不会包含 `.dsh-build/`。** 当前工作区的 patch 使用本机源码绝对路径，不能原样复制到另一台电脑。部署负责人可按 [远程插件组合](packages/experimental/environment-policy/presets/environment-policy-remote.cordis.yml) 配置协作者的 preset；完整配置说明见 [DGX 部署指南](packages/experimental/environment-policy/deploy/README.zh.md)。
+**新克隆的仓库不会包含 `.dsh-build/`。** 当前工作区的私有 patch 使用本机源码绝对路径，不能原样复制到另一台电脑。仓库提供不依赖本机路径的 [DGX Agent 预设](apps/cli/config/examples/environment-policy-dgx.patch.yml)，其本地及容器用法见 [DGX 应用部署指南](docs/user/guide/dgx-deployment.zh.md)；仅组合检索插件时可使用[远程插件组合](packages/experimental/environment-policy/presets/environment-policy-remote.cordis.yml)。
 
 只使用远程检索服务时，协作者需要代码、模型配置、接口、令牌和启动配置，**不需要额外下载 SQLite、policy_md 或 MinerU 输出**。参与语料处理或索引构建时，再单独准备对应数据。
 
@@ -73,6 +88,8 @@ pnpm run build
 packages/experimental/environment-policy/src/       Query planner, SQLite and remote providers, tool
 packages/experimental/environment-policy/deploy/    Docker API, Compose and deployment guide
 packages/experimental/environment-policy/presets/   Local and remote plugin groups
+deploy/dgx/                                        Separate Harness container and persistent state
+apps/cli/config/examples/environment-policy-dgx.patch.yml  Portable QA preset and Qwen route
 scripts/environment-policy-build-index.ts           Index builder
 data/README.md                                     Index inputs and local database preparation
 .dsh-build/                                         Machine-specific patches and token; ignored by Git
@@ -117,10 +134,11 @@ node_modules/.bin/tsc.cmd -p packages/experimental/environment-policy/tsconfig.j
 
 ## 当前范围
 
-语料目前覆盖国家级文件，尚未纳入省级文件。效力状态回答使用目录元数据；系统不独立认定法律效力。精确查询使用 SQLite；普通问题并行使用词法与向量检索，语义超时后返回词法证据。DGX API 容器不占用 GPU，embedding 由独立 GPU 服务提供；回答模型仍由本地 Harness 配置决定。配置与限制见 [部署指南](packages/experimental/environment-policy/deploy/README.zh.md)。
+语料目前覆盖国家级文件，尚未纳入省级文件。效力状态回答使用目录元数据；系统不独立认定法律效力。精确查询使用 SQLite；普通问题并行使用词法与向量检索，语义超时后返回词法证据。Harness 和检索 API 容器不占用 GPU，embedding 和回答模型由独立 GPU 服务提供。库内部分文号、日期元数据仍有异常，不能把返回证据或功能测试通过视为回答准确率保证。配置与限制见[检索部署指南](packages/experimental/environment-policy/deploy/README.zh.md)。
 
 ## 相关文档
 
+- [DGX 完整应用部署、持久化和更新](docs/user/guide/dgx-deployment.zh.md)
 - [DGX Docker 部署、接口和回滚](packages/experimental/environment-policy/deploy/README.zh.md)
 - [环境政策法规插件](packages/experimental/environment-policy/README.zh.md)
 - [数据和索引准备](data/README.zh.md)
