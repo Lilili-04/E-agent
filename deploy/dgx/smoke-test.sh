@@ -35,6 +35,12 @@ chmod 444 "$POLICY_API_TOKEN_FILE" "$QWEN_API_KEY_FILE"
 docker network create "$project" >/dev/null
 compose config --quiet
 compose up --no-build --detach --wait --wait-timeout 180 harness
-docker run --rm --entrypoint sh "$image" -c 'test ! -e /app/.env && test ! -e /app/.dsh-build && test ! -e /app/data && test ! -e /app/.git'
+docker run --rm --entrypoint sh "$image" -c '
+    test ! -e /app/.env && test ! -e /app/.dsh-build && test ! -e /app/data && test ! -e /app/.git &&
+    test -f /app/vitest.expected.config.ts && test -f /app/vitest.shared.ts &&
+    test -f /app/snapshots/session/session-query-spill/resolve-spill-command.mjs &&
+    test -f /app/snapshots/session/session-query-spill/resolve-spill-command.d.mts &&
+    test -z "$(find /app/snapshots -name "*.jsonl" -print -quit)"
+'
 compose exec -T harness node -e "fetch('http://127.0.0.1:3080/').then(async r=>{if(!r.ok||!(await r.text()).includes('__DSH_BOOT__'))process.exit(1)}).catch(()=>process.exit(1))"
 echo 'Harness image smoke passed; database and model services were not started.'

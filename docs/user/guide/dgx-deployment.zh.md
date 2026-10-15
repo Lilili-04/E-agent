@@ -46,6 +46,8 @@ docker network inspect policy-retrieval
 
 在 `deploy/dgx` 执行以下命令。镜像安装锁定的 Linux 依赖，构建应用和原生辅助程序，再通过受支持的 `dsh web` profile 启动；不下载或启动数据库及模型。
 
+构建上下文包含 Host 类型检查所需的快照辅助模块及其类型声明，以及镜像启动测试使用的 Vitest 配置；录制的会话数据仍被排除。修改 `.dockerignore` 时应保留这些构建输入。
+
 ```bash
 cd deploy/dgx
 export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"

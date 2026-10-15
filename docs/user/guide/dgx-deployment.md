@@ -46,6 +46,8 @@ For the current DGX, the example uses policy API `http://e-agent-policy-api:8080
 
 Run these commands in `deploy/dgx`. The image installs locked Linux dependencies, builds the application and native helpers, and then starts the supported `dsh web` profile. It does not download or start databases or models.
 
+The build context includes snapshot helper modules and their type declarations for Host typechecking, plus the Vitest configuration used by the image's startup test. Recorded session data remains excluded. Keep these build inputs when changing `.dockerignore`.
+
 ```bash
 cd deploy/dgx
 export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
