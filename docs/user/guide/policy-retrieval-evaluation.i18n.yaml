@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for policy-retrieval-evaluation.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/user/guide/policy-retrieval-evaluation.md
+/source-evidence-pipeline-evaluation:
+  en: f8ca90f9a4a04153
+  zh: e609542ec697b444
+/source-evidence-pipeline-evaluation/acceptance-and-results:
+  en: c0b08ba605e0b08a
+  zh: 7641afbffe7418b9
+/source-evidence-pipeline-evaluation/alternating-local-timing-comparison:
+  en: 0369ae50d48e4472
+  zh: f7102a52cbcd3107
+/source-evidence-pipeline-evaluation/reproduce:
+  en: 380344ee06ea4c80
+  zh: 6a1bfbd128e7a4ae

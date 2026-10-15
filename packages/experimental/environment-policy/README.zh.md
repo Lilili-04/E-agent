@@ -1,17 +1,17 @@
 ---
 description: "构建并查询本地国家级环境政策法规证据索引。"
-kind: "package-plugin"
+kind: "package-reference"
 ---
 
 # @deepseek-ai/dsh-experimental-environment-policy
 
 [English](README.md) | 中文
 
-## Summary
+## 概述
 
 本包提供实验性的国家级环境政策法规知识能力。它盘点和解析 Markdown 来源，抽取可审核元数据，校验模型辅助生成的 description，构建带版本标识的 SQLite 索引，规划法规查询，并通过 Cordis 服务和 `policy_search` 工具返回有大小限制的原文证据。它暂不处理省级文档，也不独立判断法律效力。
 
-## Table of Contents
+## 目录
 
 - [Use this package](#use-this-package)
 - [Understand the implementation](#understand-the-implementation)
@@ -158,10 +158,10 @@ description 的格式、引用、哈希和审核状态校验保持确定性，�
 - PDF 匹配目前只检查包含 `full.md` 的 `extracted` 目录；没有同目录 PDF 的来源会被标记。
 - 查询服务为内部调用者保留保守的时效评估字段；面向模型的工具不返回这些工作流字段，并在用户询问时使用目录中的效力状态。
 - SQLite 检索和 description 校验不要求外部 API。description 生成由调用方提供的适配器完成，包括通过子 agent 生成；所有结果都必须经过引用、哈希、格式和状态校验。
-- SQLite 提供独立的精确与词法检索；DGX 可选混合检索依赖 Chroma 和 embedding 服务。向量超时或不可用时返回同一 SQLite 的词法证据及降级警告；配置、索引构建和接口耗时见 [部署指南](deploy/README.zh.md)。
+- SQLite 保存政策原文和元数据，关键词索引与 Chroma 向量辅助召回。各通道返回标识，服务批量读取并校验正文单元后再形成引用。可选的 DGX 混合检索在向量失败时保留词法证据；原文/索引版本校验、诊断及回滚见[部署指南](deploy/README.zh.md)。
 
 <a id="dev-note"></a>
-### Dev Note
+### 开发备注
 
 <details>
 <summary>Working context for maintainers</summary>

@@ -6,6 +6,8 @@ import { queryPolicies, type PolicyQueryOptions } from '../src/query.ts'
 import { HybridQueryStore } from '../src/hybrid-store.ts'
 import { performance } from 'node:perf_hooks'
 import { SqliteQueryStore } from '../src/query-store.ts'
+import { basename } from 'node:path'
+import { loadPolicyRelease } from '../src/release.ts'
 
 const HOST = process.env.POLICY_API_HOST ?? '0.0.0.0'
 const PORT = Number.parseInt(process.env.POLICY_API_PORT ?? '8080', 10)
@@ -86,13 +88,16 @@ function numberSetting(name: string, fallback: number, maximum: number): number 
   if (!Number.isFinite(value) || value <= 0 || value > maximum) throw new Error(`invalid ${name}`)
   return value
 }
-const documentCollection = process.env.POLICY_DOCUMENT_COLLECTION?.trim()
-const passageCollection = process.env.POLICY_PASSAGE_COLLECTION?.trim()
+const release = !process.env.POLICY_RELEASE_MANIFEST_FILE ? undefined
+  : loadPolicyRelease(process.env.POLICY_RELEASE_MANIFEST_FILE, requireManifest(), basename(DB_PATH))
+const documentCollection = release?.documents.collection ?? process.env.POLICY_DOCUMENT_COLLECTION?.trim()
+const passageCollection = release?.passages.collection ?? process.env.POLICY_PASSAGE_COLLECTION?.trim()
 const store = !documentCollection ? new SqliteQueryStore(database)
   : new HybridQueryStore(database, {
     embeddingUrl: process.env.POLICY_EMBEDDING_URL ?? 'http://vllm-qwen3-embedding-4b:8000',
     chromaUrl: process.env.POLICY_CHROMA_URL ?? 'http://chroma:8000',
-    model: process.env.POLICY_EMBEDDING_MODEL ?? 'qwen3-embedding-4b',
+    model: release?.model ?? process.env.POLICY_EMBEDDING_MODEL ?? 'qwen3-embedding-4b',
+    ...(release === undefined ? {} : { release, modelRevision: release.modelRevision, chunkVersion: release.chunkVersion }),
     documentCollection,
     ...(!passageCollection ? {} : { passageCollection }),
     timeoutMs: numberSetting('POLICY_SEMANTIC_TIMEOUT_MS', 2000, 8000),
@@ -108,7 +113,20 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000, ma
     const path = new URL(request.url ?? '/', 'http://policy-api').pathname
     if (method === 'GET' && path === '/health') {
       const manifest = requireManifest()
-      json(response, 200, { status: 'ok', database: 'ready', index: manifestIdentity(manifest) })
+      json(response, 200, { status: 'ok', database: 'ready', index: manifestIdentity(manifest),
+        semantic: store instanceof HybridQueryStore ? store.semanticStatus() : { state: 'disabled' },
+        releaseVerification: release === undefined ? 'legacy' : 'manifest' })
+      return
+    }
+    if (method === 'GET' && path === '/v1/policy/status') {
+      if (!authorized(request)) {
+        json(response, 401, { error: { code: 'UNAUTHORIZED', message: 'Bearer token required' } })
+        return
+      }
+      json(response, 200, { database: 'ready', index: manifestIdentity(requireManifest()),
+        releaseVerification: release === undefined ? 'legacy' : 'manifest',
+        semantic: store instanceof HybridQueryStore ? await store.inspectIndexes() : { state: 'disabled' },
+        embedding: 'not-probed-by-status' })
       return
     }
     if (method === 'GET' && path === '/v1/policy/manifest') {

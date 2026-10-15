@@ -10,7 +10,8 @@ services:
     ports:
       - "${POLICY_API_BIND:-0.0.0.0:18080}:8080"
     environment:
-      POLICY_DB_PATH: /app/data/policy-national-v1.sqlite
+      POLICY_DB_PATH: /app/data/${POLICY_DB_FILE:-policy-national-v1.sqlite}
+      POLICY_RELEASE_MANIFEST_FILE: ${POLICY_RELEASE_MANIFEST_FILE:-}
       POLICY_API_TOKEN_FILE: /run/secrets/policy_token
       POLICY_DOCUMENT_COLLECTION: ${POLICY_DOCUMENT_COLLECTION:-}
       POLICY_PASSAGE_COLLECTION: ${POLICY_PASSAGE_COLLECTION:-}

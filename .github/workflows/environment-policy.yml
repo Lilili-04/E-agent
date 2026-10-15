@@ -54,3 +54,6 @@ jobs:
 
       - name: Run environment policy tests
         run: pnpm exec vitest run packages/experimental/environment-policy/tests
+
+      - name: Verify index construction and atomic release selection
+        run: python3 -m unittest discover -s packages/experimental/environment-policy/deploy -p 'test_*.py'

@@ -59,6 +59,7 @@ export interface PolicyTemporalFacts {
 /** One authoritative content-unit hit returned by a retrieval provider. */
 export interface PolicyQueryHit {
   readonly recordKey: string
+  readonly sourceHash: string
   readonly sourceId: string
   readonly relativePath: string
   readonly title?: string
@@ -107,20 +108,42 @@ export interface PolicyDescriptionSearchRequest {
   readonly limit: number
 }
 
-/** Semantic source hits and any degradation warning from the vector provider. */
+/** A source address returned by an index; its text and metadata must be read from SQLite. */
+export interface PolicyCandidate {
+  readonly recordKey: string
+  readonly unitId: string
+  readonly sourceHash: string
+  readonly score: number
+  readonly start?: number
+  readonly end?: number
+}
+
+/** Candidate addresses resolved against the opened source snapshot, with rejected associations counted. */
+export interface PolicyEvidenceRead {
+  readonly resolved: readonly { readonly candidate: PolicyCandidate; readonly hit: PolicyQueryHit }[]
+  readonly rejected: { readonly missingUnit: number; readonly sourceMismatch: number; readonly invalidSpan: number }
+}
+
+/** Semantic candidates and any degradation warning from the vector provider. */
 export interface PolicySemanticRecall {
   readonly elapsedMs?: number
-  readonly hits: readonly PolicyQueryHit[]
+  readonly candidates: readonly PolicyCandidate[]
   readonly warnings: readonly string[]
 }
 
 /** Minimal database-independent read interface required by the query service. */
 export interface PolicyQueryStore {
   getTitles?(): readonly string[]
+  /**
+   * Resolve candidate addresses in batches; only this operation supplies citation text.
+   * @param candidates - merged index addresses from the selected snapshot.
+   * @returns source text and metadata with invalid associations counted separately.
+   */
+  readEvidence(candidates: readonly PolicyCandidate[]): Promise<PolicyEvidenceRead>
   searchSemanticContent?(request: PolicyTextSearchRequest): Promise<PolicySemanticRecall>
-  findExact(request: PolicyExactSearchRequest): Promise<readonly PolicyQueryHit[]>
-  searchTitles(topic: string, limit: number, label?: string): Promise<readonly PolicyQueryHit[]>
-  searchContent(request: PolicyTextSearchRequest): Promise<readonly PolicyQueryHit[]>
+  findExact(request: PolicyExactSearchRequest): Promise<readonly PolicyCandidate[]>
+  searchTitles(topic: string, limit: number, label?: string): Promise<readonly PolicyCandidate[]>
+  searchContent(request: PolicyTextSearchRequest): Promise<readonly PolicyCandidate[]>
   searchDescriptions(request: PolicyDescriptionSearchRequest): Promise<readonly PolicyDescriptionHit[]>
 }
 
@@ -172,6 +195,10 @@ export interface PolicyEvidenceBundle {
     readonly semanticMs: number
     readonly totalMs: number
     readonly semanticUsed: boolean
+    readonly evidenceReadMs: number
+    readonly candidateCount: number
+    readonly uniqueUnitCount: number
+    readonly rejected: PolicyEvidenceRead['rejected']
   }
   readonly plan: PolicyQueryPlan
   readonly results: readonly PolicyEvidenceResult[]
@@ -546,7 +573,7 @@ function evidenceResult(value: RankedHit, remainingCharacters: number): PolicyEv
 }
 
 /**
- * Execute exact, content, and description-assisted recall.
+ * Merge recall addresses, resolve original text, and rank bounded evidence from one source snapshot.
  * @param store - database-independent retrieval provider.
  * @param question - natural-language policy question.
  * @param options - planner inputs and evidence limits.
@@ -574,7 +601,7 @@ export async function queryPolicies(
   const semanticUsed = !plan.useExactRecall && store.searchSemanticContent !== undefined
   const semanticRecall: Promise<PolicySemanticRecall> = semanticUsed && store.searchSemanticContent !== undefined
     ? store.searchSemanticContent({ query: question, plan, limit: candidateLimit })
-    : Promise.resolve({ hits: [], warnings: [] })
+    : Promise.resolve({ candidates: [], warnings: [] })
   const lexicalStarted = performance.now()
   const lexicalRecall = Promise.all([
     plan.useExactRecall && (preciseLookup || !plan.useFullTextRecall || plan.filters.articleLabel !== undefined || plan.intent === 'overview' || asksForHistory(question) || plan.intent === 'comparison') ? store.findExact({ plan, limit: plan.intent === 'overview' ? maxResults : candidateLimit }) : Promise.resolve([]),
@@ -598,13 +625,37 @@ export async function queryPolicies(
       limit: candidateLimit,
       recordKeys: unique(descriptionHits.map(hit => hit.recordKey)),
     })
-  const rankedHits = mergeRanked([
-    ...exactHits.map((hit, index) => ranked(hit, plan, 'exact', index + 1)).filter((value): value is RankedHit => value !== undefined),
-    ...titleHits.map((hit, index) => ranked(hit, plan, 'title-topic', index + 1)).filter((value): value is RankedHit => value !== undefined),
-    ...semantic.hits.map((hit, index) => ranked(hit, plan, 'semantic', index + 1)).filter((value): value is RankedHit => value !== undefined),
-    ...contentHits.map((hit, index) => ranked(hit, plan, 'full-text', index + 1)).filter((value): value is RankedHit => value !== undefined),
-    ...descriptionEvidence.map((hit, index) => ranked(hit, plan, 'description', index + 1)).filter((value): value is RankedHit => value !== undefined),
+  const channels = [
+    { channel: 'exact', candidates: exactHits },
+    { channel: 'title-topic', candidates: titleHits },
+    { channel: 'semantic', candidates: semantic.candidates },
+    { channel: 'full-text', candidates: contentHits },
+    { channel: 'description', candidates: descriptionEvidence },
+  ] as const
+  const candidateKey = (candidate: PolicyCandidate): string => JSON.stringify([
+    candidate.recordKey, candidate.unitId, candidate.sourceHash, candidate.start, candidate.end,
   ])
+  const addresses = channels.flatMap(({ candidates }) => candidates.map(candidate => [candidateKey(candidate), candidate] as const))
+  const candidates = [...new Map(addresses).values()]
+  const evidenceStarted = performance.now()
+  const evidence = await store.readEvidence(candidates)
+  const evidenceReadMs = Math.round(performance.now() - evidenceStarted)
+  const resolved = new Map(evidence.resolved.map(({ candidate, hit }) => [candidateKey(candidate), hit]))
+  const rankedHits = mergeRanked(channels.flatMap(({ channel, candidates }) => {
+    const units = new Map<string, RankedHit>()
+    for (const [index, candidate] of candidates.entries()) {
+      const hit = resolved.get(candidateKey(candidate))
+      const value = hit === undefined ? undefined : ranked(hit, plan, channel, index + 1)
+      if (value === undefined) continue
+      const key = JSON.stringify([candidate.recordKey, candidate.unitId])
+      const previous = units.get(key)
+      if (previous === undefined) units.set(key, value)
+      else if (value.hit.text.length < previous.hit.text.length && previous.hit.text.includes(value.hit.text)) {
+        units.set(key, { ...previous, hit: value.hit })
+      }
+    }
+    return [...units.values()]
+  }))
   const selectedHits = plan.intent === 'document-discovery' && !asksForHistory(question)
     ? [...rankedHits.reduce((selected, value) => {
       const key = value.hit.title ?? value.hit.recordKey
@@ -651,6 +702,7 @@ export async function queryPolicies(
     returnedEvidenceCharacters += Array.from(result.text).length
   }
   const warnings: string[] = [...semantic.warnings]
+  if (Object.values(evidence.rejected).some(count => count > 0)) warnings.push('candidate-source-association-rejected')
   if (results.length === 0) warnings.push('no-authoritative-evidence')
   if (results.some(result => result.temporalAssessment === 'unconfirmed')) warnings.push('temporal-status-unconfirmed')
   if (results.some(result => result.textTruncated)) warnings.push('evidence-truncated')
@@ -658,6 +710,9 @@ export async function queryPolicies(
     diagnostics: {
       planMs, lexicalMs: lexical.elapsedMs, semanticMs: semantic.elapsedMs ?? 0,
       totalMs: Math.round(performance.now() - started), semanticUsed,
+      evidenceReadMs, candidateCount: candidates.length,
+      uniqueUnitCount: new Set(candidates.map(candidate => JSON.stringify([candidate.recordKey, candidate.unitId]))).size,
+      rejected: evidence.rejected,
     },
     plan,
     results,

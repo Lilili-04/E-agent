@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { planPolicyQuery, queryPolicies, type PolicyDescriptionSearchRequest, type PolicyExactSearchRequest, type PolicyQueryHit, type PolicyQueryStore, type PolicyTextSearchRequest } from '../src/query.ts'
+import { planPolicyQuery, queryPolicies, type PolicyCandidate, type PolicyDescriptionSearchRequest, type PolicyEvidenceRead, type PolicyExactSearchRequest, type PolicyQueryHit, type PolicyQueryStore, type PolicyTextSearchRequest } from '../src/query.ts'
 
 function hit(overrides: Partial<PolicyQueryHit> = {}): PolicyQueryHit {
   return {
     recordKey: 'record-1',
+    sourceHash: 'fixture-source-hash',
     sourceId: 'source-1',
     relativePath: 'law/extracted/full.md',
     title: '中华人民共和国环境保护法',
@@ -40,6 +41,14 @@ class Store implements PolicyQueryStore {
     private readonly hydratedHits: readonly PolicyQueryHit[] = [],
     private readonly titleHits: readonly PolicyQueryHit[] = [],
   ) {}
+
+  async readEvidence(candidates: readonly PolicyCandidate[]): Promise<PolicyEvidenceRead> {
+    const units = [...this.exactHits, ...this.contentHits, ...this.hydratedHits, ...this.titleHits]
+    return { resolved: candidates.flatMap((candidate) => {
+      const hit = units.find(hit => hit.recordKey === candidate.recordKey && hit.unitId === candidate.unitId)
+      return hit === undefined ? [] : [{ candidate, hit }]
+    }), rejected: { missingUnit: 0, sourceMismatch: 0, invalidSpan: 0 } }
+  }
 
   async findExact(request: PolicyExactSearchRequest): Promise<readonly PolicyQueryHit[]> {
     this.exactRequests.push(request)

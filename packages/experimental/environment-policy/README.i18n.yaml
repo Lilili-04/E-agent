@@ -3,17 +3,17 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/experimental/environment-policy/README.md
 /:
-  en: 31864e43344f8518
-  zh: bcd4772738f34cf3
+  en: c35fee66bda7e684
+  zh: bc3a23cabf7d0bf1
 /deepseek-ai-dsh-experimental-environment-policy:
   en: b02b0d0e71b2355b
   zh: e4ee7ce276bb9db7
 /deepseek-ai-dsh-experimental-environment-policy/summary:
   en: 900035f0386fc47b
-  zh: c36970b4ade72e0c
+  zh: 4e8baa2e41523668
 /deepseek-ai-dsh-experimental-environment-policy/table-of-contents:
   en: ca83ad035b7bb0c5
-  zh: ca83ad035b7bb0c5
+  zh: 40df137a6178bfc2
 /deepseek-ai-dsh-experimental-environment-policy/use-this-package:
   en: e34bb953949fac26
   zh: 7bc261d4f5c95cd3
@@ -51,8 +51,8 @@
   en: fa4f3118829328fd
   zh: 5619916e335688a8
 /deepseek-ai-dsh-experimental-environment-policy/known-limitations-and-deferred-work:
-  en: 605fcd3658cd440c
-  zh: b6572d80cbf75904
+  en: dafb7c2583832bb2
+  zh: 7129f90e97508535
 /deepseek-ai-dsh-experimental-environment-policy/known-limitations-and-deferred-work/dev-note:
   en: b836f01bd0bceb4a
-  zh: b836f01bd0bceb4a
+  zh: d847be8131a31c5a

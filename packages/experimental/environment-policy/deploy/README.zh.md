@@ -1,15 +1,16 @@
-# DGX 环境政策数据库部署
+# DGX 政策原文、索引与检索服务部署
 
 [English](README.md) | 中文
 
-本部署将只读 SQLite 索引与检索 API 放在 DGX 的 Docker 容器中。本地 Harness 保留界面、Agent 和模型调用，`policy_search` 通过内网请求返回原文证据。检索 API 容器不需要 GPU；语义检索调用 DGX 上独立的 GPU embedding 容器，不提供数据库写入接口。
+本部署在 DGX 上运行检索服务。Harness 可在本地或自己的容器中运行，通过 HTTP 请求原文证据。SQLite 保存政策正文和元数据；关键词索引与 Chroma 向量负责定位候选。检索 API 协调这些操作，本身不是关系数据库。其容器不需要 GPU，也不提供数据写入接口。
 
 ## 服务与数据
 
 ```text
-Harness → policy_search → remote-service → DGX API
-                                            ├─ SQLite: metadata / BM25 / source text
-                                            └─ Qwen3 embedding → Chroma → SQLite source text
+Harness → policy_search → retrieval API → query planning
+  Exact query: title / number / article index → candidate addresses
+  Topic query: body BM25 + embedding / Chroma → candidate addresses
+  Merged addresses → SQLite batch read → validation / rank fusion → bounded evidence
 ```
 
 | 项目 | 配置 |
@@ -22,11 +23,11 @@ Harness → policy_search → remote-service → DGX API
 | 容器名 | `e-agent-policy-api` |
 | 令牌文件 | `/srv/e-agent/policy-api/.secrets/policy-token` |
 
-数据库已保存原文、内容单元、元数据、description 和检索词。精确与词法查询只需要 SQLite 文件；混合查询额外使用 Chroma 的持久化索引和 Qwen3 embedding 服务，不需要传输 MinerU 输出目录。重新构建索引仍需要原始 Markdown 和相应构建输入。
+SQLite 保存原文、正文单元、元数据、description 和关键词索引。Chroma 保存派生向量、原文标识及可选文本副本，副本不作为引用来源。API 在自己的容器中只读挂载 SQLite；SQLite 是嵌入式数据库，无需另起 SQL 服务容器。Chroma 和 Harness 各自拥有容器与持久化目录。重建向量需要同一原文快照、固定的 Embedding 权重、文本预处理和切分规则。服务启动及重启均不执行重建。
 
 ## Docker 配置
 
-将包的 `src/database.ts`、`src/query.ts`、`src/query-store.ts`、`src/hybrid-store.ts`、`.dockerignore` 和 `deploy/` 部署到 `/srv/e-agent/policy-api`，数据库放入上述数据目录。以 `deploy/.env.example` 为模板创建 `deploy/.env`，并将至少 32 字符的随机令牌写入对应令牌文件。令牌文件不加入 Git。
+将包内的 `src/database.ts`、`src/query.ts`、`src/query-store.ts`、`src/hybrid-store.ts`、`src/release.ts`、`.dockerignore` 和 `deploy/` 部署到 `/srv/e-agent/policy-api`，并将数据库放入上述数据目录。从 `deploy/.env.example` 创建 `deploy/.env`，在令牌文件中写入至少 32 字符的随机令牌，令牌不得进入 Git。
 
 ```dotenv
 POLICY_DATA_DIR=/srv/e-agent/policy-data
@@ -50,15 +51,15 @@ SQLite 目录使用只读绑定挂载；应用以非 root 用户运行，容器�
 
 ## 混合检索
 
-已知文件名、文号和条款直接读取 SQLite，跳过 GPU。普通问题同时执行正文 BM25 与语义召回；一次问题 embedding 供文档和正文两种向量查询共用，最多缓存 256 个问题。文档向量定位候选文件，正文向量定位分段；所有证据均回读 SQLite 原文。多路结果按名次融合，同一法规保留多条证据并共用引用编号。
+已知文件名、文号和条款跳过 GPU。主题查询让 Embedding/向量请求与词法召回交叠执行；同步 SQLite 计算仍占用 Node 事件循环。BM25 先聚合索引词，再读取限量候选正文。两种通道均返回不含引用正文的标识。服务合并、去重标识，每批 SQL 最多读取 100 个不同正文单元，拒绝缺失单元、原文哈希变化或非法 Unicode 片段，再依据 SQLite 元数据过滤并融合名次。同一正文单元在每个通道只贡献一次，同一文件的多条证据共用引用编号。
 
 `policy-retrieval` 是三个容器共用的 Docker 网络。Chroma 和 embedding 的 Compose 文件须将服务加入该外部网络；API 使用容器名访问 `http://chroma:8000` 与 `http://vllm-qwen3-embedding-4b:8000`。现有 Chroma 的主机端口仍绑定 `127.0.0.1:8002`。
 
 `deploy/.env.example` 列出全部语义配置。`POLICY_DOCUMENT_COLLECTION` 指向已有 combined 文档集合，`POLICY_PASSAGE_COLLECTION` 指向本次构建的正文集合。文档候选上限 12、正文候选上限 32；文档集合实际使用平方 L2 距离，默认上限 0.9；正文集合使用余弦距离，默认上限 0.45。阈值是可调整参数，不表示法律判断的置信度。清空两个集合名称即可使用 SQLite 检索。
 
-语义检索预算默认 2000 毫秒，失败或超时会返回同一远程 SQLite 的词法结果和 `semantic-unavailable` 警告。远程 API 本身不可用时，本地 Harness 仍明确报错。`diagnostics` 提供规划、词法、语义和总耗时，并标明是否调用语义链路；这些耗时不包含 Agent 生成回答。
+语义检索预算默认 2000 毫秒。单个向量集合失败时保留另一集合的候选；失败或超时仍保留词法证据，并返回 `semantic-unavailable` 警告。API 本身不可用时 Harness 明确报错。`diagnostics` 提供规划、词法、语义、原文读取和总耗时，候选及不同单元数量，以及缺失单元、哈希和片段关联的拒绝数量。`candidate-source-association-rejected` 标记被丢弃的原文关联。耗时不含回答生成。
 
-正文索引构建脚本 [build-passages.py](build-passages.py) 在 DGX 上读取只读 SQLite，通过已有 embedding API 将条款和段落按 1200 个 Unicode 字符、120 字符重叠写入新的余弦集合；脚本可按分段 ID 续建，全部写入后才生成 `passage-manifest.json`。当前脚本的 DB、服务地址、模型、分段和批量参数在文件顶部；构建其他环境时须先调整。SQLite 更新后须重建对应正文集合并同步配置，禁止混用不同 buildId 的索引。
+离线 [build-passages.py](build-passages.py) 接受 `--database`、`--embedding-url`、`--chroma-url`、`--model`、必填的 `--model-revision` 和 `--kind document|passage`。文档输入组合标题、摘要和限长正文概览；片段输入组合标题、章节和正文，按 1200 个 Unicode 字符、120 字符重叠切分。新集合名包含原文构建标识及模型/输入指纹，续跑要求元数据完全一致。构建器不切换在线版本。已有集合继续支持 legacy 模式，校验构建标识、原文哈希和维度，但不能确认缺失的模型权重版本。
 
 ## 本地 Harness
 
@@ -74,7 +75,7 @@ pnpm dsh web --patch .dsh-build/environment-policy-remote-web.patch.yml --no-ope
 
 ## HTTP 接口
 
-`GET /health` 不需要令牌，返回健康状态与数据库构建标识。`GET /v1/policy/manifest` 返回完整构建清单，需要 `Authorization: Bearer <token>`。`POST /v1/policy/search` 使用同一鉴权，支持下列请求：
+`GET /health` 无需令牌，报告 SQLite 就绪状态、构建标识、最近语义状态及 legacy/manifest 校验模式，不探测模型。鉴权后的 `GET /v1/policy/status` 不执行推理，只检查集合兼容性，响应明确标记 Embedding 未探测。集合就绪不代表模型可用。`GET /v1/policy/manifest` 返回完整构建清单，需要 `Authorization: Bearer <token>`。`POST /v1/policy/search` 使用相同鉴权，接受以下请求：
 
 ```json
 {
@@ -108,6 +109,15 @@ pnpm dsh web --patch .dsh-build/environment-policy-remote-web.patch.yml --no-ope
 
 ## 更新与回滚
 
-上传新的数据库时先写入临时文件并验证 SHA-256，再停止本项目容器、保留旧库、更换数据库文件并重新启动。禁止直接改写正在使用的 SQLite 文件。通过健康接口、构建清单和代表性查询确认更新；失败时恢复旧文件和对应代码版本。
+将新 SQLite 快照以新文件名保存到 `POLICY_DATA_DIR`，不要覆盖正在打开的文件。离线构建两个匹配集合后，校验整套数据。将占位集合名替换成构建器输出，并使用实际快照文件名。`release.py` 检查每个原文/片段关联和预期覆盖范围，索引不完整、哈希、模型版本或切分规则不一致时拒绝发布。
+
+```bash
+python3 release.py prepare --database /srv/e-agent/policy-data/policy-build-a.sqlite --documents DOCUMENT_COLLECTION --passages PASSAGE_COLLECTION --chroma-url http://127.0.0.1:8002 --output /srv/e-agent/policy-data/release-a.json
+python3 release.py activate --manifest /srv/e-agent/policy-data/release-a.json --chroma-url http://127.0.0.1:8002 --env-output /srv/e-agent/policy-data/selected.env
+```
+
+准备阶段在快照旁写入新清单。激活阶段重新校验整套关联后，才原子替换 `selected.env`，不调用 Docker。清单记录 SQLite 构建标识/哈希、两个集合及数量、Embedding 版本/维度、距离算法、输入版本和切分版本。模型容器还须单独固定到该权重版本；Embedding 协议不能证明模型别名实际加载了哪些权重。
+
+校验和代表性查询通过后，由维护者执行 `docker compose --env-file .env --env-file /srv/e-agent/policy-data/selected.env up -d --wait --no-deps --force-recreate policy-api`，仅重建 API 容器。第二个环境文件选择快照和 `/app/data/release-a.json`，API 从清单确定两个集合。回滚时用保留的清单再次执行 `release.py activate` 和相同 API 命令，成套选择旧 SQLite 与两个索引。在需要回滚期间保留相关快照、集合、凭据及兼容代码。生产部署与本地临时库测试分开，须在合并后验证。
 
 DGX 上的服务只绑定内网地址。HTTP 传输用于可信内网；跨不可信网络时应先部署 HTTPS 或 SSH 隧道。访问令牌授予查询权限，应通过私密渠道分发给协作者。

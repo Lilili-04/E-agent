@@ -5,7 +5,7 @@ WORKDIR /app
 
 # The API only needs the deterministic query implementation and the SQLite
 # reader. The database itself is mounted read-only by docker-compose.
-COPY src/database.ts src/query.ts src/query-store.ts src/hybrid-store.ts /app/src/
+COPY src/database.ts src/query.ts src/query-store.ts src/hybrid-store.ts src/release.ts /app/src/
 COPY deploy/server.ts /app/deploy/server.ts
 
 ENV NODE_ENV=production

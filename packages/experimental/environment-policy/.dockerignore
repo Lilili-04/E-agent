@@ -4,6 +4,7 @@
 !src/query.ts
 !src/query-store.ts
 !src/hybrid-store.ts
+!src/release.ts
 !deploy/
 !deploy/Dockerfile
 !deploy/server.ts

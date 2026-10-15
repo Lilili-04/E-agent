@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PolicyDatabase, type PolicyImportDocument } from '../src/database.ts'
 import { HybridQueryStore, type HybridConfig } from '../src/hybrid-store.ts'
 import { parsePolicyMarkdown } from '../src/parse.ts'
-import { planPolicyQuery, queryPolicies } from '../src/query.ts'
+import { planPolicyQuery, queryPolicies, type PolicyCandidate } from '../src/query.ts'
 
 const databases: PolicyDatabase[] = []
 afterEach(() => { vi.unstubAllGlobals(); for (const db of databases.splice(0)) db.close() })
@@ -79,7 +79,9 @@ describe('DGX hybrid retrieval', () => {
     await store.searchSemanticContent(request)
     expect(mock.mock.calls.filter(([url]) => url.endsWith('/v1/embeddings'))).toHaveLength(1)
     const text = Array.from(unit.text).slice(6).join('')
-    expect(first.hits.find(hit => hit.text === text)?.text).toBe(text)
+    expect(first.candidates.every(candidate => !('text' in candidate))).toBe(true)
+    const evidence = await store.readEvidence(first.candidates)
+    expect(evidence.resolved.find(({ hit }) => hit.text === text)?.hit.text).toBe(text)
     expect(first.warnings).toEqual([])
   })
 
@@ -87,8 +89,11 @@ describe('DGX hybrid retrieval', () => {
     const { db, config, metadata } = fixture()
     metadata.source_hash = 'stale'
     const query = '养猪污水处理'
-    const result = await new HybridQueryStore(db, config).searchSemanticContent({ query, plan: planPolicyQuery(query), limit: 8 })
-    expect(result.hits).toEqual([])
+    const store = new HybridQueryStore(db, config)
+    const result = await store.searchSemanticContent({ query, plan: planPolicyQuery(query), limit: 8 })
+    const evidence = await store.readEvidence(result.candidates)
+    expect(evidence.resolved).toEqual([])
+    expect(evidence.rejected.sourceMismatch).toBeGreaterThan(0)
   })
 
   it('falls back to lexical evidence within the semantic timeout and retries failed embeddings', async () => {
@@ -104,5 +109,108 @@ describe('DGX hybrid retrieval', () => {
     expect(result.diagnostics!.totalMs).toBeLessThan(500)
     await queryPolicies(store, '粪水应当如何处理')
     expect(stalled).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads repeated span addresses in one batch and rejects stale, missing and invalid associations', async () => {
+    const { db, config, unit, metadata } = fixture()
+    const store = new HybridQueryStore(db, config)
+    const batch = vi.spyOn(db, 'readUnitsById')
+    const perUnit = vi.spyOn(db, 'readContentUnits')
+    const candidate: PolicyCandidate = { recordKey: unit.recordKey, unitId: unit.unitId, sourceHash: unit.sourceHash, score: 1 }
+    const result = await store.readEvidence([
+      candidate, { ...candidate, start: metadata.start, end: metadata.end },
+      { ...candidate, sourceHash: 'old-source' }, { ...candidate, unitId: 'missing' }, { ...candidate, start: -1 },
+    ])
+    expect(batch).toHaveBeenCalledTimes(1)
+    expect(batch.mock.calls[0]?.[0]).toHaveLength(2)
+    expect(perUnit).not.toHaveBeenCalled()
+    expect(result.resolved).toHaveLength(2)
+    expect(result.resolved[1]?.hit.text).toBe(Array.from(unit.text).slice(metadata.start).join(''))
+    expect(result.rejected).toEqual({ missingUnit: 1, sourceMismatch: 1, invalidSpan: 1 })
+  })
+
+  it('keeps valid candidates beyond the first 100 addresses', async () => {
+    const { db, config, unit } = fixture()
+    const store = new HybridQueryStore(db, config)
+    const candidate = { recordKey: unit.recordKey, unitId: unit.unitId, sourceHash: unit.sourceHash, score: 1 }
+    const batch = vi.spyOn(db, 'readUnitsById')
+    const result = await store.readEvidence([...Array.from({ length: 100 }, (_, index) => ({ ...candidate, unitId: `missing-${index}` })), candidate])
+    expect(batch).toHaveBeenCalledTimes(2)
+    expect(result.resolved[0]?.hit.text).toBe(unit.text)
+    expect(result.rejected.missingUnit).toBe(100)
+  })
+
+  it('retains a working passage index when document recall fails', async () => {
+    const { db, config, mock, unit } = fixture()
+    const original = mock.getMockImplementation()!
+    mock.mockImplementation(async url => url.includes('documents-id/query') ? new Response('', { status: 503 }) : original(url))
+    const store = new HybridQueryStore(db, config)
+    const question = '养猪产生的污水怎样处理'
+    const recalled = await store.searchSemanticContent({ query: question, plan: planPolicyQuery(question), limit: 8 })
+    expect(recalled.candidates).toHaveLength(1)
+    const result = await store.readEvidence(recalled.candidates)
+    expect(result.resolved[0]?.hit.unitId).toBe(unit.unitId)
+    expect(recalled.warnings[0]).toContain('503')
+    expect(store.semanticStatus().state).toBe('degraded')
+  })
+
+  it('checks configured model revisions without querying the GPU', async () => {
+    const { db, config, mock } = fixture()
+    const store = new HybridQueryStore(db, { ...config, modelRevision: 'pinned-weights-revision' })
+    expect(store.semanticStatus().state).toBe('unverified')
+    expect((await store.inspectIndexes()).state).toBe('degraded')
+    expect(mock.mock.calls.every(([url]) => !url.endsWith('/v1/embeddings'))).toBe(true)
+    expect(store.semanticStatus().warnings.every(warning => warning.includes('model revision mismatch'))).toBe(true)
+  })
+
+  it('checks release fingerprints and collection counts before using a versioned index', async () => {
+    const { db, config, mock } = fixture()
+    const manifest = db.getManifest()!
+    const release = { formatVersion: 1 as const, databaseFile: 'snapshot.sqlite', buildId: manifest.buildId,
+      corpusHash: manifest.corpusHash, model: config.model, modelRevision: 'weights-a', dimension: 2560 as const,
+      queryInstructionVersion: 'environment-policy-query-v1' as const, chunkVersion: 'chars1200-overlap120-v1',
+      documents: { collection: 'documents', count: 1, metric: 'l2' as const, inputVersion: 'document-v1' },
+      passages: { collection: 'passages', count: 1, metric: 'cosine' as const, inputVersion: 'passage-v1' } }
+    const original = mock.getMockImplementation()!
+    let count = 1
+    mock.mockImplementation(async (url) => {
+      if (url.endsWith('/count')) return Response.json(count)
+      if (url.endsWith('/query') || url.endsWith('/v1/embeddings')) return await original(url)
+      const passage = url.endsWith('/passages')
+      return Response.json({ id: passage ? 'passages-id' : 'documents-id', dimension: 2560,
+        configuration_json: { hnsw: { space: passage ? 'cosine' : 'l2' } },
+        metadata: { build_id: manifest.buildId, corpus_hash: release.corpusHash, model: config.model,
+          input_version: passage ? 'passage-v1' : 'document-v1', model_revision: 'weights-a',
+          query_instruction_version: release.queryInstructionVersion, chunk_version: release.chunkVersion } })
+    })
+    const store = new HybridQueryStore(db, { ...config, release, modelRevision: release.modelRevision, chunkVersion: release.chunkVersion })
+    expect((await store.inspectIndexes()).state).toBe('ready')
+    count = 0
+    expect((await store.inspectIndexes()).warnings.every(warning => warning.includes('incomplete'))).toBe(true)
+    expect(mock.mock.calls.every(([url]) => !url.endsWith('/v1/embeddings'))).toBe(true)
+  })
+
+  it('reports rejected vector associations while keeping authentic lexical evidence', async () => {
+    const { db, config, metadata } = fixture()
+    metadata.unit_id = 'removed-unit'
+    const result = await queryPolicies(new HybridQueryStore(db, config), '粪水如何处理')
+    expect(result.results.length).toBeGreaterThan(0)
+    expect(result.diagnostics?.rejected.missingUnit).toBe(1)
+    expect(result.warnings).toContain('candidate-source-association-rejected')
+    expect(result.results.every(hit => hit.text.includes('粪水'))).toBe(true)
+  })
+
+  it('counts a unit only once per semantic channel and uses source text instead of Chroma document copies', async () => {
+    const { db, config, mock, metadata } = fixture()
+    const original = mock.getMockImplementation()!
+    mock.mockImplementation(async (url) => {
+      if (!url.endsWith('/query')) return await original(url)
+      return Response.json({ metadatas: [[metadata]], distances: [[url.includes('documents-id') ? 0.5 : 0.2]],
+        documents: [['伪造正文，不得引用']] })
+    })
+    const result = await queryPolicies(new HybridQueryStore(db, config), '粪水如何处理')
+    expect(result.results.every(hit => !hit.text.includes('伪造正文'))).toBe(true)
+    expect(result.results[0]?.score).toBeLessThanOrEqual(2 / 61)
+    expect(result.diagnostics?.uniqueUnitCount).toBeGreaterThan(0)
   })
 })

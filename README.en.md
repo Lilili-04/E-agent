@@ -4,9 +4,9 @@ English | [中文](README.zh.md)
 
 This project uses DeepSeek Harness (DSH) to answer questions about national-level Chinese environmental laws, regulations, standards, plans, and policy documents. Users ask questions through Harness, which runs locally or on DGX; the system retrieves source passages and the model produces an answer with citations.
 
-**The default deployment runs Harness locally and the retrieval API, read-only SQLite, Chroma vector database and Qwen3 embedding service in Docker on DGX.** Collaborators using the remote service do not need a local database or MinerU outputs.
+**The default deployment runs Harness locally. A separate retrieval API on DGX reads the SQLite policy source database and uses Chroma semantic indexes with Qwen3 embedding to find relevant material.** Collaborators using the remote service do not need a local database or MinerU outputs.
 
-Harness can also run separately on DGX, with browsers connecting to the server UI. Harness, the retrieval database, vector database, and models retain separate containers and data directories; the Harness image contains no database, corpus, or model weights.
+Harness can also run separately on DGX, with browsers connecting to the server UI. Harness, the retrieval service, Chroma and models run separately; SQLite policy data persists independently and is mounted read-only by the retrieval service. The Harness image contains no database, corpus, or model weights.
 
 ## System flow
 
@@ -14,12 +14,13 @@ Harness can also run separately on DGX, with browsers connecting to the server U
 User → Harness (local / DGX) → policy_search → DGX retrieval API → Source evidence → Agent
      ← Cited answer  ← Source evidence ← Query planning / retrieval
 
-DGX retrieval API
-  ├─ SQLite: exact lookup / body BM25 / source text
-  └─ Qwen3 embedding → Chroma: document vectors / passage vectors → SQLite source text
+Retrieval API: query planning → candidate recall → address deduplication
+  ├─ Exact / lexical channel: title, metadata and body BM25 indexes
+  └─ Semantic channel: Qwen3 embedding → Chroma document / passage indexes
+Merged candidate IDs → SQLite batch source read → validation / rank fusion → bounded citation evidence
 ```
 
-Harness owns the UI, Agent, model calls, and source presentation. The independent retrieval service owns query planning, retrieval, ranking, and evidence limits. The database stores source text, metadata, content units, descriptions, and search terms. The model receives bounded source evidence; descriptions only assist document discovery and do not replace the source.
+The architecture separates source data, retrieval indexes, and the coordinating service. SQLite owns policy text, metadata, and descriptions; its keyword indexes and Chroma vectors provide different recall channels. The retrieval API coordinates these channels and is not a database. Channels return candidate addresses; the API deduplicates addresses, reads SQLite in batches, validates source hashes and span offsets, and builds citation evidence. Chroma text copies and descriptions cannot replace original text. Harness owns the UI, Agent, and model calls; logical layers do not map one-to-one to containers.
 
 ## Capabilities and corpus
 
@@ -139,6 +140,7 @@ The corpus covers national documents; provincial documents are not included. Leg
 
 ## Related documentation
 
+- [Retrieval changes, measurements and reproduction](docs/user/guide/policy-retrieval-evaluation.md)
 - [Complete DGX application deployment, persistence, and updates](docs/user/guide/dgx-deployment.md)
 - [DGX Docker deployment, API, and rollback](packages/experimental/environment-policy/deploy/README.md)
 - [Environment-policy package guide](packages/experimental/environment-policy/README.md)
