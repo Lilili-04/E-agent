@@ -36,6 +36,7 @@ The current index contains **494 national documents and 61,455 content units**; 
 Prepare the intranet address, separate state directories, and two credential files using the [DGX application deployment guide](docs/user/guide/dgx-deployment.md), then run in `deploy/dgx`:
 
 ```bash
+export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
 docker compose build
 docker compose up -d --wait
 ```

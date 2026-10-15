@@ -36,6 +36,7 @@ Harness 负责界面、Agent、模型调用和来源展示；独立检索服务�
 按 [DGX 应用部署指南](docs/user/guide/dgx-deployment.zh.md)准备内网地址、独立状态目录和两个凭据文件，再在 `deploy/dgx` 执行：
 
 ```bash
+export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
 docker compose build
 docker compose up -d --wait
 ```

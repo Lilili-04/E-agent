@@ -48,6 +48,7 @@ docker network inspect policy-retrieval
 
 ```bash
 cd deploy/dgx
+export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
 docker compose config --quiet
 docker compose build
 docker compose up -d --wait
@@ -66,6 +67,7 @@ docker compose logs --tail 30 harness
 ```bash
 docker compose restart harness
 docker compose images
+export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
 docker compose build
 docker compose up -d --wait --no-deps harness
 ```

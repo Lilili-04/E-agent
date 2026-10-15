@@ -43,7 +43,7 @@ jobs:
         run: node --test deploy/dgx/*.test.mjs
 
       - name: Build the native ARM64 application image
-        run: docker build -f deploy/dgx/Dockerfile -t e-agent-harness:local .
+        run: docker build --build-arg "DSH_CLIENT_COMMIT_HASH=$(git rev-parse HEAD)" -f deploy/dgx/Dockerfile -t e-agent-harness:local .
 
       - name: Verify isolated startup without databases or models
         run: sh deploy/dgx/smoke-test.sh

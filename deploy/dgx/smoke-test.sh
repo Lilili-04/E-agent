@@ -8,6 +8,7 @@ project="e-agent-smoke-$(basename "$root" | tr '[:upper:]' '[:lower:]' | tr -cd 
 compose_file="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/docker-compose.yml"
 export HARNESS_IMAGE="$image" HARNESS_BIND_ADDRESS=127.0.0.1 HARNESS_PORT=0
 export HARNESS_TRUSTED_HOSTS=127.0.0.1 POLICY_RETRIEVAL_NETWORK="$project"
+export HARNESS_SOURCE_REVISION=0000000 # Fixture only; this smoke never builds an image.
 export HARNESS_STATE_DIR="$root/state" HARNESS_WORKSPACE_DIR="$root/workspace"
 export POLICY_API_TOKEN_FILE="$root/policy-token" QWEN_API_KEY_FILE="$root/qwen-key"
 

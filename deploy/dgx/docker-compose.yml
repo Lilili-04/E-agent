@@ -8,6 +8,7 @@ services:
       dockerfile: deploy/dgx/Dockerfile
       args:
         NODE_IMAGE: ${HARNESS_NODE_IMAGE:-node:24-bookworm-slim}
+        DSH_CLIENT_COMMIT_HASH: ${HARNESS_SOURCE_REVISION:-}
     restart: unless-stopped
     init: true
     user: "1000:1000"

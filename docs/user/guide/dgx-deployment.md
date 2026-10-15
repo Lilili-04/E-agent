@@ -48,6 +48,7 @@ Run these commands in `deploy/dgx`. The image installs locked Linux dependencies
 
 ```bash
 cd deploy/dgx
+export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
 docker compose config --quiet
 docker compose build
 docker compose up -d --wait
@@ -66,6 +67,7 @@ Use the following commands from `deploy/dgx`. `restart` reuses the current image
 ```bash
 docker compose restart harness
 docker compose images
+export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
 docker compose build
 docker compose up -d --wait --no-deps harness
 ```
