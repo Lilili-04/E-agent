@@ -1,0 +1,106 @@
+name: e-agent-db-viewers
+
+services:
+  datasette:
+    image: ${VIEWERS_DATASETTE_IMAGE:-e-agent-datasette:0.65.5}
+    build:
+      context: .
+      dockerfile: Dockerfile.datasette
+      args:
+        PYTHON_IMAGE: ${VIEWERS_PYTHON_IMAGE:-python:3.12-slim-bookworm}
+    restart: unless-stopped
+    user: "1000:1000"
+    command:
+      - datasette
+      - /data/policy.sqlite
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
+      - --setting
+      - default_page_size
+      - "50"
+      - --setting
+      - max_returned_rows
+      - "1000"
+      - --setting
+      - sql_time_limit_ms
+      - "1500"
+      - --setting
+      - num_sql_threads
+      - "2"
+      - --setting
+      - suggest_facets
+      - "off"
+      - --setting
+      - allow_download
+      - "off"
+      - --setting
+      - allow_csv_stream
+      - "off"
+    volumes:
+      - type: bind
+        source: ${POLICY_SQLITE_FILE:?set POLICY_SQLITE_FILE to the DGX snapshot}
+        target: /data/policy.sqlite
+        read_only: true
+        bind:
+          create_host_path: false
+    networks: [viewers]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    cpus: 1
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    logging:
+      options: {max-size: 10m, max-file: "3"}
+
+  gateway:
+    image: ${VIEWERS_GATEWAY_IMAGE:-e-agent-db-viewers:local}
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+      args:
+        NODE_IMAGE: ${VIEWERS_NODE_IMAGE:-node:24-alpine}
+        NGINX_IMAGE: ${VIEWERS_NGINX_IMAGE:-nginx:1.28-alpine}
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      CHROMA_UPSTREAM: ${CHROMA_UPSTREAM:-chroma:8000}
+    depends_on:
+      datasette:
+        condition: service_healthy
+    ports:
+      - "${VIEWERS_BIND_ADDRESS:?set VIEWERS_BIND_ADDRESS}:${SQLITE_VIEWER_PORT:-18101}:8080"
+      - "${VIEWERS_BIND_ADDRESS:?set VIEWERS_BIND_ADDRESS}:${CHROMA_VIEWER_PORT:-18102}:8081"
+    secrets: [viewer_htpasswd]
+    networks: [viewers, retrieval]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    cpus: 0.5
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/healthz"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    logging:
+      options: {max-size: 10m, max-file: "3"}
+
+secrets:
+  viewer_htpasswd:
+    file: ${VIEWERS_HTPASSWD_FILE:?set VIEWERS_HTPASSWD_FILE}
+
+networks:
+  viewers:
+    internal: true
+  retrieval:
+    name: ${POLICY_RETRIEVAL_NETWORK:-policy-retrieval}
+    external: true

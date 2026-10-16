@@ -1,0 +1,22 @@
+name: DGX database viewers
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['deploy/db-viewers/**', '.github/workflows/db-viewers.yml']
+  push:
+    branches: [main]
+    paths: ['deploy/db-viewers/**', '.github/workflows/db-viewers.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: ARM64 viewers and read-only access
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify isolated viewers
+        run: python3 deploy/db-viewers/smoke-test.py --build

@@ -1,0 +1,5 @@
+*
+!Dockerfile.datasette
+!Dockerfile.gateway
+!prepare-ui.mjs
+!nginx.conf.template

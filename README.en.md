@@ -13,6 +13,7 @@ Users can access the DGX Web UI directly; developers can also run Harness locall
 - [Multiple recall channels: three categories, four branches](#retrieval)
 - [Choose how to use or deploy](#deployment)
 - [Start, restart, and update](#startup)
+- [DGX database viewers](#db-viewers)
 - [Collaboration and data preparation](#collaboration)
 - [Verification and common issues](#verification)
 - [Code and documentation](#documentation)
@@ -119,15 +120,14 @@ The Embedding model and Chroma calculate similarity within semantic retrieval; p
 
 ## Choose how to use or deploy
 
-The following three arrangements differ by Harness location and data source. Browser-only users do not need to deploy code.
+The project provides the following two deployment arrangements. Both keep policy databases, vector indexes, and database viewers on DGX. Browser-only users do not need to deploy code.
 
 | Arrangement | Use case | Prerequisites |
 | --- | --- | --- |
 | A. DGX Web application | Daily questions, demonstrations, centralized operation | Browser, LAN access, and an authenticated URL supplied privately by the maintainer |
 | B. Local Harness with DGX retrieval | Frontend, tool, or agent configuration development | Source, Node/pnpm, launch configuration, and retrieval/model credentials |
-| C. Local Harness with local SQLite | Offline retrieval development, indexing, or explicit local switching | The local runtime from B, a SQLite file or build inputs, and an available answer model |
 
-A and B do not require users to download the policy corpus or model weights. SQLite retrieval in C does not itself depend on DGX, but the answer model requires separate configuration. Local vector retrieval is not automatically provided with SQLite.
+Neither A nor B requires users to download the corpus or model weights. Both use DGX retrieval and model services. Local Harness does not connect to a local policy database; unavailable remote APIs return errors.
 
 The DGX application is at `http://172.27.153.44:3080/`; first access requires the current process's authenticated URL. This instance shares sessions, settings, and workspaces without multi-tenant isolation. The retrieval API at `http://172.27.153.44:18080` serves tool queries rather than chat pages. See the [DGX application deployment guide](docs/user/guide/dgx-deployment.md) for Docker-internal addresses and host ports.
 
@@ -171,17 +171,20 @@ Open the authenticated URL printed in the terminal, normally at `http://127.0.0.
 
 When dependencies and build artifacts are ready, restarting requires only the launch command. Use the same interactive terminal for installation, build, and launch where possible. Codex execution and the user's terminal can differ in Node, pnpm, proxies, and dependency links. If `node_modules/.modules.yaml` is missing, pnpm may inspect and relink the entire workspace, increasing startup time. Install or build again only when dependencies or build artifacts need updating.
 
-### C. Local SQLite
+<a id="db-viewers"></a>
 
-Prepare `data/policy-national-v1.sqlite` using the [data guide](data/README.md), then compose the local knowledge service and query tool using the [package guide](packages/experimental/environment-policy/README.md). Run the index builder only when the database needs rebuilding.
+## DGX database viewers
 
-The current Windows workspace also retains local-database configuration. Stop Harness in remote mode before explicitly switching:
+A and B share one optional viewer deployment on DGX, regardless of where Harness runs. It is a separate Compose project; stopping or updating it does not stop question answering or rebuild databases.
 
-```powershell
-pnpm dsh web --patch .dsh-build/environment-policy-local-web.patch.yml --no-open
-```
+| Page | Default LAN address | Purpose |
+| --- | --- | --- |
+| Datasette | `http://172.27.153.44:18101` | Browse SQLite tables, policy text, metadata, and read-only SQL queries |
+| ChromaDB UI | `http://172.27.153.44:18102` | Browse collections, records, and metadata; query using existing vectors |
 
-Remote failures return errors rather than automatically selecting an older local database. Switching retrieval services does not change the model's `policy_search` interface.
+Both pages share a separate login configuration. SQLite is mounted read-only. The Chroma gateway allows reads and queries while rejecting creation, modification, deletion, and resets. Chroma loads at most 500 records per batch; table filters apply to the loaded batch. Viewers do not replace the retrieval API or start additional GPU models.
+
+The repository provides configuration and tests; a maintainer must explicitly deploy these pages on DGX before they become accessible. See the [database viewer deployment guide](deploy/db-viewers/README.md) for credentials, paths, startup, verification, and updates.
 
 <a id="collaboration"></a>
 
@@ -193,7 +196,7 @@ Git stores source, lockfiles, deployment templates, and documentation. SQLite fi
 | --- | --- |
 | Use the DGX Web UI | LAN access and an authenticated URL |
 | Develop locally against DGX | Retrieval endpoint/token, available model/credentials, and local launch configuration |
-| Develop local SQLite retrieval | SQLite snapshot; querying does not require raw MinerU outputs |
+| Browse DGX databases | LAN access, deployed viewer pages, and a separate viewer login |
 | Rebuild SQLite | Source Markdown, inventory, metadata, descriptions, and other build inputs |
 | Rebuild vector indexes | Matching SQLite snapshot, pinned Embedding model, input/splitting rules, and Chroma |
 
@@ -233,7 +236,8 @@ These are Windows commands. See the [retrieval evaluation](docs/user/guide/polic
 | [Retrieval deployment](packages/experimental/environment-policy/deploy/README.md) | API, Docker, hybrid retrieval, index releases, and rollback |
 | [DGX application deployment](docs/user/guide/dgx-deployment.md) | Harness container, authentication, persistence, updates, and troubleshooting |
 | [Agent preset](apps/cli/config/examples/environment-policy-dgx.patch.yml) | Q&A name, description, prompts, tools, and model configuration |
-| [Data preparation](data/README.md) | Local SQLite and indexing inputs |
+| [Database viewers](deploy/db-viewers/README.md) | Shared read-only DGX pages for A and B |
+| [Data preparation](data/README.md) | SQLite indexing inputs and snapshot releases |
 | [Retrieval evaluation](docs/user/guide/policy-retrieval-evaluation.md) | Results, limitations, and reproduction |
 | [Development guide](docs/development.md) | DSH repository development and checks |
 

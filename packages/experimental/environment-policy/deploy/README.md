@@ -71,7 +71,7 @@ pnpm dsh web --patch .dsh-build/environment-policy-remote-web.patch.yml --no-ope
 
 The reusable plugin group for other developers is [environment-policy-remote.cordis.yml](../presets/environment-policy-remote.cordis.yml). Set `DGX_POLICY_API_URL` and `DGX_POLICY_API_TOKEN_FILE` to change the endpoint and local token file. Requests default to an 8-second timeout, configurable through `timeoutMs`.
 
-The original local-index group is retained as `.dsh-build/environment-policy-local-web.patch.yml` for explicit rollback. Remote failures do not automatically use a local database.
+Project deployment arrangements A and B both use DGX databases. Remote failures return errors rather than selecting a local database. Both arrangements share the optional [DGX database viewers](../../../../deploy/db-viewers/README.md).
 
 ## HTTP API
 

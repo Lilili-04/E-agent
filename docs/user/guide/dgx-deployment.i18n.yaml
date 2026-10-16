@@ -8,6 +8,9 @@
 /run-the-environment-policy-harness-on-dgx/deployment-layout:
   en: dd6efa4abcdeb1b1
   zh: 4e6e372c3b58a963
+/run-the-environment-policy-harness-on-dgx/database-viewers:
+  en: 1603ad45f4b808a5
+  zh: 46148ba5c7c69914
 /run-the-environment-policy-harness-on-dgx/prepare-the-server:
   en: 472b04ad08d99179
   zh: d9d576645ed5021c

@@ -1,17 +1,19 @@
-# Local environment-policy index
+# Environment-policy indexing inputs
 
-`policy-national-v1.sqlite` is the generated national environment-policy index used by the local DSH preset. The database is intentionally ignored by Git because it is a large derived artifact and is not part of the source upload.
+English | [中文](README.zh.md)
 
-Place the database at:
+`policy-national-v1.sqlite` is the generated national policy source database. Deployment arrangements A and B both use DGX databases; this directory prepares build artifacts rather than providing a third Harness deployment. The large database is ignored by Git and excluded from source uploads.
+
+The index builder defaults to:
 
 ```text
 data/policy-national-v1.sqlite
 ```
 
-Run DSH from the repository root so the preset's relative path resolves correctly. To rebuild it, provide the inventory, metadata, and description inputs to:
+Prepare source Markdown, inventories, metadata, descriptions, and other inputs, then run from the repository root:
 
 ```powershell
 node --experimental-strip-types scripts/environment-policy-build-index.ts
 ```
 
-The build script writes the SQLite index and its manifest to this directory by default. The raw policy corpus and source files are also local inputs and are not required to be committed with the code.
+The script writes SQLite and its manifest here by default. Exclude raw inputs and generated files from Git. Follow the [retrieval deployment guide](../packages/experimental/environment-policy/deploy/README.md) to validate and release the snapshot with matching vector indexes on DGX; update the snapshot selected by the [viewer configuration](../deploy/db-viewers/README.md) when changing databases.

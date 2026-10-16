@@ -58,3 +58,9 @@ native/system/test/bin/
 /deploy/dgx/secrets/
 /deploy/dgx/state/
 /deploy/dgx/workspace/
+
+# Shared DGX database viewers: keep runtime configuration and credentials private.
+/deploy/db-viewers/.env
+/deploy/db-viewers/secrets/
+/deploy/db-viewers/.smoke-*/
+/deploy/db-viewers/**/__pycache__/

@@ -1,0 +1,19 @@
+ARG NODE_IMAGE=node:24-alpine
+ARG NGINX_IMAGE=nginx:1.28-alpine
+FROM ${NODE_IMAGE} AS build
+WORKDIR /app
+# Pin and verify the upstream source without vendoring its repository.
+ADD --checksum=sha256:4c569c12c9f93b9f2b259c81e0f972425202d14556fc6605518e66fe672dbcc2 https://codeload.github.com/BlackyDrum/chromadb-ui/tar.gz/1b0b0de7014c9e28d60da2c81fdc2d88bb515bf5 /tmp/ui.tar.gz
+RUN tar -xzf /tmp/ui.tar.gz --strip-components=1 -C /app
+COPY prepare-ui.mjs /tmp/prepare-ui.mjs
+RUN node /tmp/prepare-ui.mjs /app/src/App.vue
+RUN npm ci --no-audit --no-fund && npm run build
+
+FROM ${NGINX_IMAGE}
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=build /app/LICENSE /usr/share/nginx/html/CHROMADB_UI_LICENSE.txt
+COPY nginx.conf.template /opt/viewers/nginx.conf.template
+EXPOSE 8080 8081
+USER 1000:1000
+ENTRYPOINT ["/bin/sh", "-ec"]
+CMD ["envsubst '$CHROMA_UPSTREAM' < /opt/viewers/nginx.conf.template > /tmp/nginx.conf; exec nginx -c /tmp/nginx.conf -g 'daemon off;'"]
