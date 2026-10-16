@@ -1,17 +1,19 @@
-# 本地环境政策索引
+# 环境政策索引构建资料
 
-`policy-national-v1.sqlite` 是本地 DSH preset 使用的国家级环境政策法规索引。数据库属于体积较大的生成语料产物，已加入 Git 忽略，不会随源代码上传。
+[English](README.md) | 中文
 
-数据库应放在：
+`policy-national-v1.sqlite` 是生成的国家级环境政策原文数据库。A、B 两种部署均使用 DGX 上的数据库；本目录用于准备构建产物，不是第三种 Harness 部署方式。数据库体积较大，已加入 Git 忽略，不随代码上传。
+
+构建脚本默认输出到：
 
 ```text
 data/policy-national-v1.sqlite
 ```
 
-请从仓库根目录启动 DSH，使 preset 中的相对路径能够正确解析。需要重新构建时，请准备清单、元数据、description 和原始语料，并运行：
+在仓库根目录准备 Markdown 原文、源文件清单、元数据和 description 等输入后运行：
 
 ```powershell
 node --experimental-strip-types scripts/environment-policy-build-index.ts
 ```
 
-构建脚本默认把 SQLite 索引和清单写入本目录。原始政策语料和输入文件属于本地部署资料，不需要提交到代码仓库。
+脚本默认将 SQLite 和清单写入本目录。原始语料和生成文件不提交到 Git。构建完成后，按[检索部署指南](../packages/experimental/environment-policy/deploy/README.zh.md)将 SQLite 快照与匹配的向量索引成套校验、发布到 DGX；更新数据库时也要同步[可视化配置](../deploy/db-viewers/README.zh.md)所指向的快照。

@@ -24,6 +24,10 @@ Browser → Harness container → policy API container → candidate recall / fu
                   └→ Qwen generation container → cited answer
 ```
 
+## 数据库可视化
+
+无论 Harness 在 DGX 还是本地运行，数据库浏览页面都只在 DGX 部署一套。可选的独立 Compose 项目提供 Datasette 和 ChromaDB UI，通过同一份独立登录配置访问；SQLite 只读挂载，Chroma 写入由网关拦截。配置、端口与验证见[可视化部署指南](../../../deploy/db-viewers/README.zh.md)。
+
 ## 准备服务器
 
 使用安装了 Docker Engine 和 Compose 插件的 ARM64 Linux DGX，预留源码构建磁盘空间，并确保能访问 Node 镜像、Debian 软件源和 npm registry。Harness 容器使用 CPU，不申请 GPU。已有容器应已运行，并加入外部 `policy-retrieval` 网络。

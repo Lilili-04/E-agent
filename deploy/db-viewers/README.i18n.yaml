@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write deploy/db-viewers/README.md
+/:
+  en: d1c7b9c1029dd6a0
+  zh: 5898ab0249829c71
+/dgx-database-viewers:
+  en: 74cf05c0aa1419b2
+  zh: 38b25460e80be2d3
+/dgx-database-viewers/summary:
+  en: d633638adc81d09d
+  zh: cff590c7afaea0b0
+/dgx-database-viewers/table-of-contents:
+  en: 88f5ae467725426a
+  zh: ef5cec9957331ef0
+/dgx-database-viewers/components-and-access:
+  en: c45690edeacd29ca
+  zh: 48eeacacab18fd18
+/dgx-database-viewers/prepare-configuration-on-dgx:
+  en: 6dcec81620c999d6
+  zh: 806e7a0321470ad6
+/dgx-database-viewers/build-start-and-verify:
+  en: cca57032b74e90a2
+  zh: 5019259ff03924cd
+/dgx-database-viewers/update-stop-and-troubleshoot:
+  en: 9b8032a263326d3c
+  zh: 6ca0be04c25f7059
+/dgx-database-viewers/isolated-tests-and-upstream-versions:
+  en: f64c79506506255d
+  zh: dfab6587852cdf0d
+/dgx-database-viewers/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

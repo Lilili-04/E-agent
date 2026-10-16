@@ -71,7 +71,7 @@ pnpm dsh web --patch .dsh-build/environment-policy-remote-web.patch.yml --no-ope
 
 供其他开发者使用的通用插件组合见 [environment-policy-remote.cordis.yml](../presets/environment-policy-remote.cordis.yml)。设置 `DGX_POLICY_API_URL` 和 `DGX_POLICY_API_TOKEN_FILE` 可修改接口地址和本机令牌文件。插件默认请求超时为 8 秒，可通过 `timeoutMs` 修改。
 
-原有本地库启动组合保留为 `.dsh-build/environment-policy-local-web.patch.yml`，用于主动回滚。远程失败不会自动混用本地数据库。
+项目 A、B 两种部署均使用 DGX 数据库，远程失败时直接报错，不切换本地库。两者共用可选的 [DGX 数据库可视化](../../../../deploy/db-viewers/README.zh.md)。
 
 ## HTTP 接口
 

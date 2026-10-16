@@ -24,6 +24,10 @@ Browser → Harness container → policy API container → candidate recall / fu
                   └→ Qwen generation container → cited answer
 ```
 
+## Database viewers
+
+Whether Harness runs on DGX or locally, database viewer pages are deployed only once on DGX. An optional separate Compose project provides Datasette and ChromaDB UI with a shared, separate login. SQLite is mounted read-only; the gateway blocks Chroma writes. See the [viewer deployment guide](../../../deploy/db-viewers/README.md) for configuration, ports, and verification.
+
 ## Prepare the server
 
 Use an ARM64 Linux DGX with Docker Engine and the Compose plugin, enough disk for the source build, and working access to the Node image, Debian package repositories, and npm registry. The Harness container uses CPU and does not request a GPU. The existing containers must already be running on the external `policy-retrieval` network.

@@ -13,6 +13,7 @@ E-agent 基于 DeepSeek Harness（DSH），面向国家级中文环境法律、�
 - [多路召回：三类、四路](#retrieval)
 - [选择使用与部署方式](#deployment)
 - [启动、重启与更新](#startup)
+- [DGX 数据库可视化](#db-viewers)
 - [协作开发与数据准备](#collaboration)
 - [验证与常见问题](#verification)
 - [代码与文档入口](#documentation)
@@ -119,15 +120,14 @@ Embedding 模型与 Chroma 负责语义通道内的相似性计算，“是否�
 
 ## 选择使用与部署方式
 
-按 Harness 运行位置和数据来源，可以选择以下三种方式。只使用网页的人无需部署代码。
+项目只提供以下两种部署方式；两者的政策数据库、向量索引和数据库可视化均在 DGX。只使用网页的人无需部署代码。
 
 | 方式 | 适用场景 | 需要准备 |
 | --- | --- | --- |
 | A．DGX 网页应用 | 日常问答、演示、集中运行 | 浏览器、内网连接、负责人私密提供的认证地址 |
 | B．本地 Harness＋DGX 检索 | 修改前端、工具或 agent 配置 | 代码、Node/pnpm、启动配置、检索及模型凭据 |
-| C．本地 Harness＋本地 SQLite | 离线检索开发、建库、主动切换本地库 | B 的本地运行环境、SQLite 文件或构建输入、可用回答模型 |
 
-A、B 都不要求使用者下载政策语料和模型权重。C 的本地 SQLite 检索本身不依赖 DGX，但回答模型仍需单独配置；本地向量检索也不随 SQLite 自动提供。
+A、B 都不要求使用者下载政策语料和模型权重。两者共用 DGX 检索 API 和模型服务；本地 Harness 不连接本地政策库，远程接口不可用时直接报错。
 
 DGX 应用入口为 `http://172.27.153.44:3080/`，首次访问需要当前进程的认证链接。该实例共享会话、设置和工作区，不提供多租户隔离。检索 API 为 `http://172.27.153.44:18080`，用于工具查询，不是聊天页面；Docker 内部地址与宿主机端口见[DGX 应用部署指南](docs/user/guide/dgx-deployment.zh.md)。
 
@@ -171,17 +171,20 @@ pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open
 
 依赖和构建产物齐全时，重启只需启动命令。尽量在同一个交互式终端完成安装、构建和启动；Codex 执行环境与用户终端的 Node、pnpm、代理和依赖链接状态可能不同。缺少 `node_modules/.modules.yaml` 时，pnpm 可能重新检查并链接整个 workspace，导致启动变慢。只有依赖变化或构建产物需要更新时才重新安装、构建。
 
-### C．使用本地 SQLite
+<a id="db-viewers"></a>
 
-准备 `data/policy-national-v1.sqlite`，按[数据说明](data/README.zh.md)建库，并参考[插件说明](packages/experimental/environment-policy/README.zh.md)组合本地知识服务和查询工具。只有需要重建数据库时才运行建库脚本。
+## DGX 数据库可视化
 
-当前 Windows 工作区还保留本地库配置；停止远程模式的 Harness 后，可主动切换：
+A、B 共用一套可选的 DGX 可视化组件，不再按 Harness 的运行位置分别部署。它是独立的 Compose 项目，停止或更新它不会停止问答服务或重建数据库。
 
-```powershell
-pnpm dsh web --patch .dsh-build/environment-policy-local-web.patch.yml --no-open
-```
+| 页面 | 默认内网地址 | 用途 |
+| --- | --- | --- |
+| Datasette | `http://172.27.153.44:18101` | 浏览 SQLite 表、政策正文、元数据和只读 SQL 查询 |
+| ChromaDB UI | `http://172.27.153.44:18102` | 浏览集合、记录及元数据，使用已有向量查询 |
 
-远程服务不可用时直接报错，不自动切换到本地旧库。切换检索服务不需要改变模型调用的 `policy_search` 工具接口。
+两个页面使用同一份独立登录配置。SQLite 文件只读挂载；Chroma 经网关只开放读取和查询接口，拒绝新增、修改、删除及重置。Chroma 记录每批最多读取 500 条，表格筛选作用于当前批次。可视化不替代检索 API，也不额外启动 GPU 模型。
+
+仓库提供配置与测试，页面需由维护者在 DGX 显式部署后才可访问。准备账号、配置路径、启动、验证和更新步骤见[数据库可视化部署指南](deploy/db-viewers/README.zh.md)。
 
 <a id="collaboration"></a>
 
@@ -193,7 +196,7 @@ Git 保存源代码、锁文件、部署模板和文档。SQLite、政策语料�
 | --- | --- |
 | 使用 DGX 网页 | 内网及认证地址 |
 | 本地开发并调用 DGX | 检索接口与令牌、可用模型与凭据、本机启动配置 |
-| 开发本地 SQLite 检索 | SQLite 快照；查询时不需要 MinerU 原始结果 |
+| 浏览 DGX 数据库 | 内网、已部署的可视化页面及独立登录账号 |
 | 重建 SQLite | Markdown 原文、源文件清单、元数据、description 等构建输入 |
 | 重建向量索引 | 对应 SQLite 快照、固定版本的 Embedding 模型、输入及切分规则、Chroma |
 
@@ -233,7 +236,8 @@ node_modules/.bin/tsc.cmd -p packages/experimental/environment-policy/tsconfig.j
 | [检索服务部署](packages/experimental/environment-policy/deploy/README.zh.md) | API、Docker、混合检索、索引发布与回滚 |
 | [DGX 应用部署](docs/user/guide/dgx-deployment.zh.md) | Harness 容器、访问认证、持久化、更新与排查 |
 | [Agent 预设](apps/cli/config/examples/environment-policy-dgx.patch.yml) | 问答名称、描述、提示词、工具和模型配置 |
-| [数据准备](data/README.zh.md) | 本地 SQLite 与建库输入 |
+| [数据库可视化](deploy/db-viewers/README.zh.md) | A、B 共用的 DGX 只读浏览页面 |
+| [数据准备](data/README.zh.md) | SQLite 建库输入与快照发布 |
 | [检索效果评测](docs/user/guide/policy-retrieval-evaluation.zh.md) | 评测结果、局限与复现方法 |
 | [开发指南](docs/development.zh.md) | DSH 仓库开发与检查流程 |
 

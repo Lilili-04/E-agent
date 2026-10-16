@@ -6,8 +6,8 @@
   en: 9399a3ea3a27bb16
   zh: d6de05813d0e51fa
 /e-agent-environmental-policy-q-a-system/reading-guide:
-  en: 14b7ec8986a78ebd
-  zh: 77a5bebca1d6269d
+  en: 7d3b6ec8e879dcb8
+  zh: a6c81f77c0a75174
 /e-agent-environmental-policy-q-a-system/capabilities-and-scope:
   en: 4234a9f95b73ad43
   zh: e6be7f5c40b4feec
@@ -24,8 +24,8 @@
   en: c74348a86ee997c8
   zh: 54578665b049ded0
 /e-agent-environmental-policy-q-a-system/choose-how-to-use-or-deploy:
-  en: 4dacf10317eb6e8a
-  zh: 94d6bd3622339cf6
+  en: 5339bd12992ad597
+  zh: b47becc10e210ab0
 /e-agent-environmental-policy-q-a-system/start-restart-and-update:
   en: 15d2dab45afb472a
   zh: 82c4619add5ef6f6
@@ -33,20 +33,20 @@
   en: 900251594bf59d40
   zh: a77f759fc8f544c9
 /e-agent-environmental-policy-q-a-system/start-restart-and-update/b-local-harness-connected-to-dgx:
-  en: dd0ec74ef806c507
-  zh: e44aa864a5b90f50
-/e-agent-environmental-policy-q-a-system/start-restart-and-update/c-local-sqlite:
-  en: 1c780d8fd0bfe196
-  zh: 03e808ba321c5b6d
+  en: 0d15b4a91f8904a8
+  zh: c83a4f124b91fd29
+/e-agent-environmental-policy-q-a-system/dgx-database-viewers:
+  en: a299652180230af2
+  zh: f7ca28ca79f3e74a
 /e-agent-environmental-policy-q-a-system/collaboration-and-data-preparation:
-  en: b811da44ec9ac6ac
-  zh: 9e600ea92bca6c15
+  en: 773da6c77dcdbc45
+  zh: b7d153e32dbd90a2
 /e-agent-environmental-policy-q-a-system/verification-and-common-issues:
   en: 9cb8b9f56ee44e44
   zh: 0eeb1ef5cb186428
 /e-agent-environmental-policy-q-a-system/code-and-documentation:
-  en: 5f447089409779ec
-  zh: 27c53ee8d0136125
+  en: 751e7b52b300d37d
+  zh: e17fd4c9b9f112d5
 /e-agent-environmental-policy-q-a-system/license:
   en: f370bf50e60d7591
   zh: ff42d2fc354c5513
