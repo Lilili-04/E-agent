@@ -1,151 +1,245 @@
-# National Environmental Policy Q&A System Built on DSH
+# E-agent: Environmental Policy Q&A System
 
 English | [中文](README.zh.md)
 
-This project uses DeepSeek Harness (DSH) to answer questions about national-level Chinese environmental laws, regulations, standards, plans, and policy documents. Users ask questions through Harness, which runs locally or on DGX; the system retrieves source passages and the model produces an answer with citations.
+E-agent uses DeepSeek Harness (DSH) to provide retrieval-augmented generation (RAG) for national-level Chinese environmental laws, regulations, standards, plans, and policy documents. The system retrieves original passages before the model composes an answer with sources.
 
-**The default deployment runs Harness locally. A separate retrieval API on DGX reads the SQLite policy source database and uses Chroma semantic indexes with Qwen3 embedding to find relevant material.** Collaborators using the remote service do not need a local database or MinerU outputs.
+Users can access the DGX Web UI directly; developers can also run Harness locally and connect to DGX retrieval and model services. The application, retrieval service, vector database, and models are maintained separately. The Harness image contains no corpus, database, or model weights.
 
-Harness can also run separately on DGX, with browsers connecting to the server UI. Harness, the retrieval service, Chroma and models run separately; SQLite policy data persists independently and is mounted read-only by the retrieval service. The Harness image contains no database, corpus, or model weights.
+## Reading guide
 
-## System flow
+- [Capabilities and scope](#scope)
+- [Architecture and question-answering flow](#architecture)
+- [Multiple recall channels: three categories, four branches](#retrieval)
+- [Choose how to use or deploy](#deployment)
+- [Start, restart, and update](#startup)
+- [Collaboration and data preparation](#collaboration)
+- [Verification and common issues](#verification)
+- [Code and documentation](#documentation)
+- [License](#license)
+
+<a id="scope"></a>
+
+## Capabilities and scope
+
+The system locates source text by policy title, document number, or article, discovers policies by topic, and uses indexed material to answer questions about provisions, summaries, publication dates, legal status, and versions.
+
+The current SQLite index contains **494 national documents and 61,455 content units**; the database is approximately **835 MiB**. A content unit can be an article, paragraph, list, or heading, rather than an entire document. Provincial documents are not included.
+
+Answers depend on corpus coverage, parsing quality, metadata, and model interpretation. Legal status comes from catalog records; the system does not independently determine legal validity. Some document-number and date metadata remains malformed. Returned evidence, title matches, or passing functional tests do not establish answer accuracy.
+
+<a id="architecture"></a>
+
+## Architecture and question-answering flow
+
+The architecture separates original data, retrieval indexes, and the coordinating service. SQLite owns policy content, while Chroma provides a rebuildable semantic index. The retrieval API is a service above the databases. Logical responsibilities and container counts are separate concerns.
+
+Here, “retrieval API” usually means the policy retrieval backend running on DGX; strictly, the API is that program's public HTTP interface. `policy_search` sends a question to `POST /v1/policy/search`. The backend applies parsing rules and database retrieval, returning source evidence and retrieval information rather than generating the final answer.
+
+| Component | Responsibility | Deployment and data |
+| --- | --- | --- |
+| Harness | Provides the Web UI, sessions, agent, and tool execution | Runs locally or in a DGX container, with separate state and workspace storage |
+| `policy_search` | Policy query tool called by the model | Runs in Harness and requests the retrieval API over HTTP |
+| Retrieval API | Parses questions, coordinates recall, reads sources, and merges evidence | Separate CPU container with a read-only SQLite mount |
+| SQLite | Stores source text, titles, dates, metadata, descriptions, and keyword indexes | Independently persisted file opened by the retrieval API; no SQL server container is required |
+| Chroma | Stores vectors, source identifiers, and optional text copies | Separate container and persistent directory; text copies are not citation evidence |
+| Qwen3-Embedding-4B | Converts questions and index text into vectors | Separate GPU service for semantic retrieval |
+| Qwen3.8-27B | Selects tool calls and generates answers from evidence | Separate GPU service accessed through an OpenAI-compatible API |
+
+**Offline indexing**: MinerU parses policy files into Markdown. The indexer combines source inventories, metadata, and descriptions into SQLite, then document and passage embeddings are written to Chroma. Ordinary queries and service restarts do not parse the corpus or rebuild vectors.
+
+**Online questions**: Harness sends the question to the answer model, which requests `policy_search`. The tool calls the retrieval API. After the API returns bounded source evidence, the model continues with an answer and sources. The query planner uses code rules without an additional planning model.
 
 ```text
-User → Harness (local / DGX) → policy_search → DGX retrieval API → Source evidence → Agent
-     ← Cited answer  ← Source evidence ← Query planning / retrieval
-
-Retrieval API: query planning → candidate recall → address deduplication
-  ├─ Exact / lexical channel: title, metadata and body BM25 indexes
-  └─ Semantic channel: Qwen3 embedding → Chroma document / passage indexes
-Merged candidate IDs → SQLite batch source read → validation / rank fusion → bounded citation evidence
+Question -> Harness -> Answer model requests policy_search
+                              |
+                         policy_search
+                              | HTTP
+                         Retrieval API
+                              |
+                    Plan and recall candidates
+                              |
+                    Merge and deduplicate IDs
+                              |
+                    SQLite batch source reads
+                              |
+                 Validate, filter, fuse ranks, limit
+                              |
+                        Tool evidence
+                              |
+                  Answer model -> Harness -> User
 ```
 
-The architecture separates source data, retrieval indexes, and the coordinating service. SQLite owns policy text, metadata, and descriptions; its keyword indexes and Chroma vectors provide different recall channels. The retrieval API coordinates these channels and is not a database. Channels return candidate addresses; the API deduplicates addresses, reads SQLite in batches, validates source hashes and span offsets, and builds citation evidence. Chroma text copies and descriptions cannot replace original text. Harness owns the UI, Agent, and model calls; logical layers do not map one-to-one to containers.
+The diagram describes the current repository code. **Updating Harness does not update the separate retrieval API**; verify each image and code version before assuming the server uses this implementation. See the [retrieval deployment guide](packages/experimental/environment-policy/deploy/README.md) for batch source reads, index validation, and releases.
 
-## Capabilities and corpus
+The tool defaults to at most 8 evidence records and 12,000 source characters, rather than an entire law. Multiple passages from one document can share a citation number such as `[1]`. Among returned candidates, the tool prefers the most recently published version of a normalized title unless history or version comparison is requested. This does not guarantee that the corpus contains the latest legal version.
 
-- Prioritizes the corresponding document and source units for explicit titles, document numbers, or articles.
-- Discovers documents by topic using title search, body BM25, document vectors and passage vectors.
-- Returns publication dates and the legal-status fields recorded in the catalog.
-- Prefers the latest version in tool output unless the user explicitly requests history.
-- Includes source titles, publication dates, and article or section references in answers.
+<a id="retrieval"></a>
 
-The current index contains **494 national documents and 61,455 content units**; the database is approximately **835 MiB**. SQLite files, source corpora, tokens, and machine-specific launch configuration are excluded from Git.
+## Multiple recall channels: three categories, four branches
 
-## Run the complete application on DGX
+The three categories are exact, keyword, and semantic recall. Splitting semantic recall gives the following four retrieval branches in hybrid mode. The API selects channels for the question rather than running every branch every time.
 
-Prepare the intranet address, separate state directories, and two credential files using the [DGX application deployment guide](docs/user/guide/dgx-deployment.md), then run in `deploy/dgx`:
+| Branch | Example question | Candidate source |
+| --- | --- | --- |
+| Exact recall | “What is Article 1 of the Nuclear Safety Law?” | SQLite title, document-number, and article lookup |
+| Keyword recall | “Which policies concern livestock pollution?” | SQLite title search and body BM25 search |
+| Document semantic recall | Find relevant policy documents using natural language | Question vectors match Chroma document vectors, followed by body search within candidate documents |
+| Passage semantic recall | Find relevant articles or paragraphs using natural language | Question vectors match Chroma passage vectors and return source locations |
+
+Both semantic branches reuse one question embedding. Channels return source identifiers; the service reads and validates SQLite text to form evidence. Current rank fusion does not require a separate reranker model.
+
+Descriptions help discover documents and contribute to document embedding input; they cannot replace original policy text. They are not a fifth hybrid branch. SQLite-only mode also supports description keyword recall. Vector input varies by build version; see the [retrieval deployment guide](packages/experimental/environment-policy/deploy/README.md) for the rules.
+
+### Who selects tools and recall channels
+
+The model selects the tool, while code rules in the retrieval API select the recall channels. These are separate decisions.
+
+| Decision | Responsible component |
+| --- | --- |
+| Whether to query policies and what question to submit | Answer model, constrained by the policy Q&A prompt |
+| Which recall channels and retrieval conditions to use | Retrieval API query planner, using code rules |
+| How to read, filter, rank, and merge candidates | Retrieval API retrieval and evidence code |
+| How to explain evidence and list sources | Answer model |
+
+The model-facing `policy_search` parameters are `question`, optional `topic`, and `current_date`; there is no recall-channel selector. The prompt requires tool use before answering policy questions. The model still proposes the actual call, which Harness executes.
+
+### How rules classify questions
+
+The planner parses questions using string matching, regular expressions, and conditionals. It matches catalog titles and names without the “中华人民共和国” prefix, recognizes book-title marks, document numbers, and article labels such as “第二十六条”, and uses overview, date, and legal-status expressions to determine intent and filters. It does not use an additional language model to reason freely about retrieval routes.
+
+- “水土保持法第二十六条是什么？”: after the model calls the tool, the planner identifies the law and article, retrieves the specified provision, and skips semantic recall.
+- “养殖场的废水能直接排到河里吗？”: with no explicit target law, hybrid mode with configured vector services runs keyword and semantic recall concurrently; semantic retrieval queries both document and passage collections.
+
+The Embedding model and Chroma calculate similarity within semantic retrieval; planner rules decide whether to enable that channel. Rules support testing and reproduction, but title or intent misclassification can select the wrong channels or miss evidence. Similarity also does not establish that evidence supports a question's premise. See the [query planning code](packages/experimental/environment-policy/src/query.ts) for parsing and channel conditions.
+
+<a id="deployment"></a>
+
+<a id="run"></a>
+
+## Choose how to use or deploy
+
+The following three arrangements differ by Harness location and data source. Browser-only users do not need to deploy code.
+
+| Arrangement | Use case | Prerequisites |
+| --- | --- | --- |
+| A. DGX Web application | Daily questions, demonstrations, centralized operation | Browser, LAN access, and an authenticated URL supplied privately by the maintainer |
+| B. Local Harness with DGX retrieval | Frontend, tool, or agent configuration development | Source, Node/pnpm, launch configuration, and retrieval/model credentials |
+| C. Local Harness with local SQLite | Offline retrieval development, indexing, or explicit local switching | The local runtime from B, a SQLite file or build inputs, and an available answer model |
+
+A and B do not require users to download the policy corpus or model weights. SQLite retrieval in C does not itself depend on DGX, but the answer model requires separate configuration. Local vector retrieval is not automatically provided with SQLite.
+
+The DGX application is at `http://172.27.153.44:3080/`; first access requires the current process's authenticated URL. This instance shares sessions, settings, and workspaces without multi-tenant isolation. The retrieval API at `http://172.27.153.44:18080` serves tool queries rather than chat pages. See the [DGX application deployment guide](docs/user/guide/dgx-deployment.md) for Docker-internal addresses and host ports.
+
+<a id="startup"></a>
+
+## Start, restart, and update
+
+### A. DGX Web application
+
+For initial deployment, follow the [DGX application deployment guide](docs/user/guide/dgx-deployment.md) to prepare state directories, credentials, networking, and the build. The Compose project in `deploy/dgx` manages Harness only and requires retrieval, Chroma, and model services to be running already.
+
+To restart only Harness in an existing deployment, run from the repository directory on DGX:
 
 ```bash
-export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
-docker compose build
-docker compose up -d --wait
+cd deploy/dgx
+docker compose restart harness
 ```
 
-This Compose project manages only Harness and calls the existing retrieval API and Qwen3.8-27B model through the external `policy-retrieval` network. The separate retrieval API container still mounts SQLite read-only, and Chroma persists its own index. Rebuilding, updating, or stopping Harness does not operate on those database or model containers; a restart needs only `docker compose restart harness`.
+Obtain the current authenticated URL from the logs after restart. Source changes require rebuilding the image; `restart` alone does not load new code. Update the retrieval API, SQLite, vector indexes, and models separately using their deployment guides. Stopping or rebuilding Harness does not rebuild their data.
 
-## Existing local workspace: start or restart
+<a id="run-from-source"></a>
 
-Run from the repository root:
+### B. Local Harness connected to DGX
 
-```powershell
-pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open
-```
-
-On this computer, `environment-policy-web.patch.yml` selects the remote service at `http://172.27.153.44:18080` and reads its token from `.dsh-build/dgx-policy.token`. Do not put the token in README files, launch commands, or Git.
-
-Open the authenticated URL printed by DSH, normally at `http://127.0.0.1:3080`. DGX port `18080` serves retrieval requests; local port `3080` serves the Harness UI.
-
-When dependencies and build artifacts exist, restarting requires only the command above. Install or build again only when dependencies change, artifacts are missing, or artifacts need regeneration.
-
-## New collaborators: required inputs
-
-Users of an already deployed DGX Web UI need a browser, LAN access, and an authenticated URL supplied privately by the maintainer. They need no local Node installation, database, or model. The following inputs are for local developers.
-
-| Item | How to prepare it |
-| --- | --- |
-| Source code | Clone the Git repository |
-| Runtime | Windows, macOS, or Linux; Node.js 22.x starting at 22.19, or 24 and newer; pnpm 11 or newer |
-| Model configuration | Configure an available model and its credentials in Harness model settings |
-| DGX endpoint | Join the server's LAN and obtain the endpoint from the deployment maintainer |
-| Query token | Obtain it privately and save it in a local token file |
-| Launch configuration | Prepare an Agent preset and launch patch for the local checkout |
-
-**A fresh clone does not contain `.dsh-build/`.** The current private workspace patch contains absolute source paths and cannot be copied unchanged to another computer. The repository provides a [DGX Agent preset](apps/cli/config/examples/environment-policy-dgx.patch.yml) without machine-specific paths; see the [DGX application deployment guide](docs/user/guide/dgx-deployment.md) for local and container use, or the [remote plugin group](packages/experimental/environment-policy/presets/environment-policy-remote.cordis.yml) when composing only retrieval plugins.
-
-Remote-query collaborators need source code, model configuration, an endpoint, a token, and a launch configuration. **They do not need SQLite, policy_md, or MinerU outputs.** Corpus processing and index-building work require the corresponding data separately.
-
-Prepare dependencies and build artifacts once:
+New collaborators need the repository's declared runtime: Node.js `^22.19.0 || >=24.0.0`, with pnpm pinned by `packageManager` in `package.json`. Install and build once from the repository root:
 
 ```powershell
 pnpm install --frozen-lockfile
 pnpm run build
 ```
 
-After preparing the local launch configuration, use the earlier launch command. Complete installation, build, and launch in the same interactive terminal when possible. Codex execution and the user's terminal can differ in Node, pnpm, and dependency-link state. If `node_modules/.modules.yaml` is missing, pnpm may inspect and relink the whole workspace, increasing startup time.
+Then follow the local instructions at the end of the [deployment guide](docs/user/guide/dgx-deployment.md) to prepare a private `DSH_HOME`, retrieval endpoint, token file, and model credentials, and generate launch configuration from the reusable preset. A fresh clone has no `.dsh-build/`; do not use the machine-specific configuration below.
 
-## Layout and deployment documentation
-
-```text
-packages/experimental/environment-policy/src/       Query planner, SQLite and remote providers, tool
-packages/experimental/environment-policy/deploy/    Docker API, Compose and deployment guide
-packages/experimental/environment-policy/presets/   Local and remote plugin groups
-deploy/dgx/                                        Separate Harness container and persistent state
-apps/cli/config/examples/environment-policy-dgx.patch.yml  Portable QA preset and Qwen route
-scripts/environment-policy-build-index.ts           Index builder
-data/README.md                                     Index inputs and local database preparation
-.dsh-build/                                         Machine-specific patches and token; ignored by Git
-```
-
-See the [environment-policy package guide](packages/experimental/environment-policy/README.md) for retrieval behavior. The [DGX deployment guide](packages/experimental/environment-policy/deploy/README.md) owns Docker configuration, authentication endpoints, database updates, and server maintenance commands.
-
-## Local index building and rollback
-
-Local SQLite mode supports independent development, index construction, and explicit rollback. It requires `data/policy-national-v1.sqlite`. See [data preparation](data/README.md) for source Markdown, inventory, metadata, and description inputs.
+**The existing Windows workspace** already has remote launch configuration. Stop the previous process, then start or restart from the repository root:
 
 ```powershell
-node --experimental-strip-types scripts/environment-policy-build-index.ts
+pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open
 ```
 
-The builder writes the database and manifest to `data/` by default. Use `--inventory`, `--metadata`, `--descriptions`, `--output`, `--manifest`, and `--source-root` for other input and output locations.
+Open the authenticated URL printed in the terminal, normally at `http://127.0.0.1:3080`. This private configuration uses the DGX retrieval API and keeps its token in `.dsh-build/dgx-policy.token`. It may contain absolute local paths and cannot be copied unchanged to another computer.
 
-This computer retains a local-database rollback patch. Stop the current Harness service before selecting it:
+When dependencies and build artifacts are ready, restarting requires only the launch command. Use the same interactive terminal for installation, build, and launch where possible. Codex execution and the user's terminal can differ in Node, pnpm, proxies, and dependency links. If `node_modules/.modules.yaml` is missing, pnpm may inspect and relink the entire workspace, increasing startup time. Install or build again only when dependencies or build artifacts need updating.
+
+### C. Local SQLite
+
+Prepare `data/policy-national-v1.sqlite` using the [data guide](data/README.md), then compose the local knowledge service and query tool using the [package guide](packages/experimental/environment-policy/README.md). Run the index builder only when the database needs rebuilding.
+
+The current Windows workspace also retains local-database configuration. Stop Harness in remote mode before explicitly switching:
 
 ```powershell
 pnpm dsh web --patch .dsh-build/environment-policy-local-web.patch.yml --no-open
 ```
 
-Remote failures return errors instead of automatically using an older local index. Switching the database deployment does not change the question-answering tool interface.
+Remote failures return errors rather than automatically selecting an older local database. Switching retrieval services does not change the model's `policy_search` interface.
 
-## Verification and troubleshooting
+<a id="collaboration"></a>
+
+## Collaboration and data preparation
+
+Git stores source, lockfiles, deployment templates, and documentation. SQLite files, policy corpora, vector indexes, model weights, session state, credentials, and private local configuration are prepared separately and excluded from the repository.
+
+| Work | Required beyond source code |
+| --- | --- |
+| Use the DGX Web UI | LAN access and an authenticated URL |
+| Develop locally against DGX | Retrieval endpoint/token, available model/credentials, and local launch configuration |
+| Develop local SQLite retrieval | SQLite snapshot; querying does not require raw MinerU outputs |
+| Rebuild SQLite | Source Markdown, inventory, metadata, descriptions, and other build inputs |
+| Rebuild vector indexes | Matching SQLite snapshot, pinned Embedding model, input/splitting rules, and Chroma |
+
+See the [data guide](data/README.md) for inputs and the [retrieval deployment guide](packages/experimental/environment-policy/deploy/README.md) for coordinated SQLite/vector validation, releases, and rollback. Distribute authentication links, API tokens, and model credentials privately; never put them in README files or Git.
+
+<a id="verification"></a>
+
+## Verification and common issues
+
+Run the retrieval package's focused checks from the repository root:
 
 ```powershell
 node_modules/.bin/vitest.cmd run packages/experimental/environment-policy/tests
 node_modules/.bin/tsc.cmd -p packages/experimental/environment-policy/tsconfig.json --noEmit
 ```
 
-| Symptom | Check |
+These are Windows commands. See the [retrieval evaluation](docs/user/guide/policy-retrieval-evaluation.md) for measurement criteria and reproduction, and the [DGX application deployment guide](docs/user/guide/dgx-deployment.md) for deployment verification.
+
+| Symptom | Check or action |
 | --- | --- |
-| DGX connection failure | LAN access, endpoint, and server `/health` |
-| HTTP 401 | Whether the token file exists and matches the server token |
-| Missing launch patch | `.dsh-build/` is not in Git; prepare local configuration first |
-| Slow startup | Repeated installation/build, incomplete dependency links, and different terminal runtimes |
-| Missing evidence | Whether the corpus contains the document and which source units were returned |
+| Web UI unavailable or returning 401 | Distinguish Web and retrieval ports; check LAN access, address, and the current process's authenticated URL |
+| Retrieval or model returns 401 | Check retrieval and model credentials separately; they are different credentials |
+| Missing launch patch | Fresh clones exclude `.dsh-build/`; generate local configuration first |
+| Slow startup | Check repeated installs/builds and differences in Node/pnpm or dependency links |
+| Slow answers with fast retrieval | Full questions also include model inference before/after tools and answer generation |
+| Returned content does not support the question | Inspect source evidence, document titles, and coverage rather than similarity alone |
+| Vector failure or timeout | Hybrid retrieval retains lexical evidence; total API unavailability returns an error |
+| Merged code has not changed retrieval | Check Harness and retrieval API images and versions separately |
 
-Tests cover query planning, SQLite, the real HTTP API, authentication, and remote tool composition. Remote integration tests temporarily start a local HTTP service.
+<a id="documentation"></a>
 
-## Current scope
+## Code and documentation
 
-The corpus covers national documents; provincial documents are not included. Legal-status answers use catalog metadata, and the system does not independently determine legal validity. Exact queries use SQLite; ordinary questions run lexical and vector retrieval concurrently, returning lexical evidence after semantic timeouts. Harness and the retrieval API use no GPU; independent GPU services provide embeddings and answer generation. Some document-number and date metadata remains malformed; returned evidence or passing functional checks does not guarantee answer accuracy. See the [retrieval deployment guide](packages/experimental/environment-policy/deploy/README.md) for settings and limitations.
+| Entry | Content |
+| --- | --- |
+| [Retrieval package](packages/experimental/environment-policy/README.md) | Query planning, knowledge services, tools, and retrieval semantics |
+| [Retrieval deployment](packages/experimental/environment-policy/deploy/README.md) | API, Docker, hybrid retrieval, index releases, and rollback |
+| [DGX application deployment](docs/user/guide/dgx-deployment.md) | Harness container, authentication, persistence, updates, and troubleshooting |
+| [Agent preset](apps/cli/config/examples/environment-policy-dgx.patch.yml) | Q&A name, description, prompts, tools, and model configuration |
+| [Data preparation](data/README.md) | Local SQLite and indexing inputs |
+| [Retrieval evaluation](docs/user/guide/policy-retrieval-evaluation.md) | Results, limitations, and reproduction |
+| [Development guide](docs/development.md) | DSH repository development and checks |
 
-## Related documentation
+Policy retrieval code lives in `packages/experimental/environment-policy/src/`; the SQLite builder is `scripts/environment-policy-build-index.ts`. This project builds on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) and retains the upstream framework and contribution history.
 
-- [Retrieval changes, measurements and reproduction](docs/user/guide/policy-retrieval-evaluation.md)
-- [Complete DGX application deployment, persistence, and updates](docs/user/guide/dgx-deployment.md)
-- [DGX Docker deployment, API, and rollback](packages/experimental/environment-policy/deploy/README.md)
-- [Environment-policy package guide](packages/experimental/environment-policy/README.md)
-- [Data and index preparation](data/README.md)
-- [Environment-policy Q&A implementation plan](.agents/notes/proposed/feature/2026-09-25-environment-policy-qa.md)
+<a id="license"></a>
 
 ## License
 

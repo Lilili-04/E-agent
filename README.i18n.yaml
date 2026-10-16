@@ -2,39 +2,51 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.en.md
-/national-environmental-policy-q-a-system-built-on-dsh:
-  en: 248c3d315a229a87
-  zh: a8a2aecf62ec0489
-/national-environmental-policy-q-a-system-built-on-dsh/system-flow:
-  en: 10e2664a4053f19d
-  zh: 69fc070134bf4c34
-/national-environmental-policy-q-a-system-built-on-dsh/capabilities-and-corpus:
-  en: 9afde84da4b4d35c
-  zh: deab2c769610429a
-/national-environmental-policy-q-a-system-built-on-dsh/run-the-complete-application-on-dgx:
-  en: 66cefbadcefeee51
-  zh: ce68ac541b669955
-/national-environmental-policy-q-a-system-built-on-dsh/existing-local-workspace-start-or-restart:
-  en: 2b2335fc546c7edc
-  zh: b237b7045f2513ae
-/national-environmental-policy-q-a-system-built-on-dsh/new-collaborators-required-inputs:
-  en: 38649c9a29025cc9
-  zh: 6eba0b6d4a0d585d
-/national-environmental-policy-q-a-system-built-on-dsh/layout-and-deployment-documentation:
-  en: 19396bef9aa66c9e
-  zh: 44c10539c2a3cad8
-/national-environmental-policy-q-a-system-built-on-dsh/local-index-building-and-rollback:
-  en: 9b14bec4ccbb7fc6
-  zh: c7daf3a61506788f
-/national-environmental-policy-q-a-system-built-on-dsh/verification-and-troubleshooting:
-  en: 5a6f26fdc4d66d20
-  zh: 68325aeebb4c395a
-/national-environmental-policy-q-a-system-built-on-dsh/current-scope:
-  en: 1712f17b7f311444
-  zh: d99e1df9cba3a43a
-/national-environmental-policy-q-a-system-built-on-dsh/related-documentation:
-  en: fe0c0b5e4ae29d09
-  zh: 806c7a366703b7d3
-/national-environmental-policy-q-a-system-built-on-dsh/license:
+/e-agent-environmental-policy-q-a-system:
+  en: 9399a3ea3a27bb16
+  zh: d6de05813d0e51fa
+/e-agent-environmental-policy-q-a-system/reading-guide:
+  en: 14b7ec8986a78ebd
+  zh: 77a5bebca1d6269d
+/e-agent-environmental-policy-q-a-system/capabilities-and-scope:
+  en: 4234a9f95b73ad43
+  zh: e6be7f5c40b4feec
+/e-agent-environmental-policy-q-a-system/architecture-and-question-answering-flow:
+  en: 344dc39f3c4cdbd9
+  zh: 94c8a6ba7502314e
+/e-agent-environmental-policy-q-a-system/multiple-recall-channels-three-categories-four-branches:
+  en: 659b836cf65a658f
+  zh: 48e50817fa1d4157
+/e-agent-environmental-policy-q-a-system/multiple-recall-channels-three-categories-four-branches/who-selects-tools-and-recall-channels:
+  en: fd55f77a94360733
+  zh: 58c93b0f146b3f6a
+/e-agent-environmental-policy-q-a-system/multiple-recall-channels-three-categories-four-branches/how-rules-classify-questions:
+  en: c74348a86ee997c8
+  zh: 54578665b049ded0
+/e-agent-environmental-policy-q-a-system/choose-how-to-use-or-deploy:
+  en: 4dacf10317eb6e8a
+  zh: 94d6bd3622339cf6
+/e-agent-environmental-policy-q-a-system/start-restart-and-update:
+  en: 15d2dab45afb472a
+  zh: 82c4619add5ef6f6
+/e-agent-environmental-policy-q-a-system/start-restart-and-update/a-dgx-web-application:
+  en: 900251594bf59d40
+  zh: a77f759fc8f544c9
+/e-agent-environmental-policy-q-a-system/start-restart-and-update/b-local-harness-connected-to-dgx:
+  en: dd0ec74ef806c507
+  zh: e44aa864a5b90f50
+/e-agent-environmental-policy-q-a-system/start-restart-and-update/c-local-sqlite:
+  en: 1c780d8fd0bfe196
+  zh: 03e808ba321c5b6d
+/e-agent-environmental-policy-q-a-system/collaboration-and-data-preparation:
+  en: b811da44ec9ac6ac
+  zh: 9e600ea92bca6c15
+/e-agent-environmental-policy-q-a-system/verification-and-common-issues:
+  en: 9cb8b9f56ee44e44
+  zh: 0eeb1ef5cb186428
+/e-agent-environmental-policy-q-a-system/code-and-documentation:
+  en: 5f447089409779ec
+  zh: 27c53ee8d0136125
+/e-agent-environmental-policy-q-a-system/license:
   en: f370bf50e60d7591
   zh: ff42d2fc354c5513
