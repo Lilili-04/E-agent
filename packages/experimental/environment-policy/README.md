@@ -11,16 +11,6 @@ English | [中文](README.zh.md)
 
 This package provides the experimental national environment-policy knowledge capability. It inventories and parses Markdown sources, extracts reviewable metadata, validates model-assisted descriptions, builds a versioned SQLite index, plans policy queries, and exposes bounded source evidence through a Cordis service and `policy_search` tool. It does not index provincial documents or independently decide legal validity.
 
-### Local v2 trial
-
-Mount `./v2-service` and `./v2-tools` together. The separate SQLite snapshot has two business tables, `documents` and `content_units`, and two FTS5 indexes. Jieba segments source and query text; native BM25 ranks title/description or body matches. `policy_search` discovers versions or passages; `policy_read` reads a selected version consecutively. The existing DGX provider is independent of this local trial.
-
-From the repository root, prepare national sources with `python scripts/prepare-policy-v2.py --workspace .. --legacy data/policy-national-v1.sqlite --output .dsh-build/policy-v2-documents.jsonl --corpus national`, then build with `node --import tsx/esm scripts/build-policy-v2.ts .dsh-build/policy-v2-documents.jsonl data/policy-v2-trial.sqlite`. Choose a fresh output filename; the builder refuses overwrites. Python needs `openpyxl`. Input Markdown, descriptions and workbook remain outside Git. Import audit and legacy-vector mapping JSON files accompany the prepared source file; mismatched descriptions and placeholder metadata are excluded.
-
-Provider settings are `path`, optional `semanticConfigPath` plus `compatibilityPath`, and bounds `candidateLimit`, `resultLimit`, `pageCharacters`, `evidenceCharacters`. The semantic JSON supplies DGX embedding/Chroma URLs, model, collections and timeout. Existing vectors require matching build, source hash and original span; failures are reported and BM25 remains available. Search never writes a collection. Coverage follows the existing national vector snapshot.
-
-`policy_read` takes `document_id`, `scope` (`full`, `section`, `article`), exact `selector` for sections/articles and optional `cursor`. Continue with `next_cursor` until `has_more=false`. Oversized units span pages with `unit_fragments=true`; missing clauses return `found=false`. `source_complete` concerns the imported source, not legal validity. Search passages marked `excerpted` require further reading. A per-agent, per-turn completion check requests unfinished full reads and stops with an error after the configured reminder limit. It cannot verify model interpretation; documents exceeding the context window still depend on compaction.
-
 ## Table of Contents
 
 - [Use this package](#use-this-package)
@@ -33,6 +23,16 @@ Provider settings are `path`, optional `semanticConfigPath` plus `compatibilityP
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
+
+## Local v2 trial
+
+Mount `./v2-service` and `./v2-tools` together. The separate SQLite snapshot has two business tables, `documents` and `content_units`, and two FTS5 indexes. Jieba segments source and query text; native BM25 ranks title/description or body matches. `policy_search` discovers versions or passages; `policy_read` reads a selected version consecutively. The existing DGX provider is independent of this local trial.
+
+From the repository root, prepare national sources with `python scripts/prepare-policy-v2.py --workspace .. --legacy data/policy-national-v1.sqlite --output .dsh-build/policy-v2-documents.jsonl --corpus national`, then build with `node --import tsx/esm scripts/build-policy-v2.ts .dsh-build/policy-v2-documents.jsonl data/policy-v2-trial.sqlite`. Choose a fresh output filename; the builder refuses overwrites. Python needs `openpyxl`. Input Markdown, descriptions and workbook remain outside Git. Import audit and legacy-vector mapping JSON files accompany the prepared source file; mismatched descriptions and placeholder metadata are excluded.
+
+Provider settings are `path`, optional `semanticConfigPath` plus `compatibilityPath`, and bounds `candidateLimit`, `resultLimit`, `pageCharacters`, `evidenceCharacters`. The semantic JSON supplies DGX embedding/Chroma URLs, model, collections and timeout. Existing vectors require matching build, source hash and original span; failures are reported and BM25 remains available. Search never writes a collection. Coverage follows the existing national vector snapshot.
+
+`policy_read` takes `document_id`, `scope` (`full`, `section`, `article`), exact `selector` for sections/articles and optional `cursor`. Continue with `next_cursor` until `has_more=false`. Oversized units span pages with `unit_fragments=true`; missing clauses return `found=false`. `source_complete` concerns the imported source, not legal validity. Search passages marked `excerpted` require further reading. A per-agent, per-turn completion check requests unfinished full reads and stops with an error after the configured reminder limit. It cannot verify model interpretation; documents exceeding the context window still depend on compaction.
 
 -----
 

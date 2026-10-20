@@ -72,7 +72,9 @@ function sourceRow(row: Record<string, SQLOutputValue>): SourceUnit {
 
 /** Read-only query store. Builders use create(), never the runtime constructor. */
 export class PolicyV2Database {
+  /** Read-only SQLite handle for offline diagnostics; the store owns its lifetime. */
   readonly sql: DatabaseSync
+  /** Version-specific metadata loaded from this snapshot, excluding machine paths. */
   readonly documents: DocumentCard[]
 
   constructor(path: string) {

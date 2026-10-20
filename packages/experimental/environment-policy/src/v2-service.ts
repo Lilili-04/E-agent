@@ -55,6 +55,7 @@ declare module '@deepseek-ai/cordis' {
 /** A provider scoped to one preset; no database writes occur during questions. */
 export default class PolicyV2Service extends Service {
   static Config = Config
+  /** Provider-owned read-only snapshot, exposed for offline evaluation. */
   readonly database: PolicyV2Database
   private readonly semantic?: PolicyV2Semantic
   private readonly settings: Required<Pick<Config, 'candidateLimit' | 'resultLimit' | 'pageCharacters' | 'evidenceCharacters'>>

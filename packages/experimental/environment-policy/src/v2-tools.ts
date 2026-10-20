@@ -129,5 +129,8 @@ export function apply(ctx: Context, config: Config = {}): void {
 }
 
 declare module '@deepseek-ai/dsh-llm' {
-  interface MessageSourceMap { 'policy-read-check': { kind: 'policy-read-check' } }
+  interface MessageSourceMap {
+    /** @persistenceAttribution */
+    'policy-read-check': { kind: 'policy-read-check' }
+  }
 }

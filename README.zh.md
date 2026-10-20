@@ -61,6 +61,7 @@ Jieba 用于正文与问题分词，SQLite FTS5 原生 BM25 排序，候选融�
 A 的部署入口见 [DGX 指南](docs/user/guide/dgx-deployment.zh.md)。B 是新版检索的开发验证组合，需要额外取得 SQLite 与匹配映射文件。旧的“本地 Harness＋远程检索 API”配置仍调用旧版工具，不能用来验证本次 `policy_read` 链路。
 
 <a id="run"></a>
+
 <a id="run-from-source"></a>
 
 <a id="startup"></a>

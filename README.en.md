@@ -61,6 +61,7 @@ Jieba segments both source and query, and native SQLite FTS5 BM25 ranks lexical 
 See the [DGX guide](docs/user/guide/dgx-deployment.md) for A. B validates the new retrieval implementation and requires the snapshot and matching mapping file. Older local-Harness/remote-API settings still invoke the old tool and cannot validate the new `policy_read` flow.
 
 <a id="run"></a>
+
 <a id="run-from-source"></a>
 
 <a id="startup"></a>
