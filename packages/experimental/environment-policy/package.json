@@ -27,6 +27,14 @@
     "./remote-service": {
       "types": "./lib/types/remote-service.d.ts",
       "default": "./lib/remote-service.js"
+    },
+    "./v2-service": {
+      "types": "./lib/types/v2-service.d.ts",
+      "default": "./lib/v2-service.js"
+    },
+    "./v2-tools": {
+      "types": "./lib/types/v2-tools.d.ts",
+      "default": "./lib/v2-tools.js"
     }
   },
   "files": [
@@ -40,20 +48,22 @@
     "node": ">=22.19.0"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:~"
+    "@deepseek-ai/schemastery": "workspace:~",
+    "jieba-wasm": "^2.4.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
-    "@deepseek-ai/dsh-tools": "workspace:*"
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
-    "@types/node": "^22.20.0",
-    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
-    "@deepseek-ai/cordis-plugin-include": "workspace:~"
+    "@types/node": "^22.20.0"
   }
 }

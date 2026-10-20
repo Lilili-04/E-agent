@@ -3,13 +3,16 @@ set -eu
 umask 077
 
 : "${HARNESS_TRUSTED_HOSTS:?set HARNESS_TRUSTED_HOSTS to the browser host:port}"
-: "${DGX_POLICY_API_TOKEN_FILE:?set DGX_POLICY_API_TOKEN_FILE to the mounted policy token}"
+: "${POLICY_V2_DB_PATH:?set POLICY_V2_DB_PATH to the mounted SQLite snapshot}"
+: "${POLICY_V2_COMPATIBILITY_PATH:?set POLICY_V2_COMPATIBILITY_PATH to the mounted vector mapping}"
 : "${DGX_QWEN_API_KEY_FILE:?set DGX_QWEN_API_KEY_FILE to the mounted model API key}"
 
-if [ ! -r "$DGX_POLICY_API_TOKEN_FILE" ] || [ ! -s "$DGX_POLICY_API_TOKEN_FILE" ]; then
-    echo 'Harness: policy token file is missing, empty, or unreadable.' >&2
-    exit 1
-fi
+for file in "$POLICY_V2_DB_PATH" "$POLICY_V2_COMPATIBILITY_PATH"; do
+    if [ ! -f "$file" ] || [ ! -r "$file" ] || [ ! -s "$file" ]; then
+        echo 'Harness: policy data file is missing, empty, or unreadable.' >&2
+        exit 1
+    fi
+done
 if [ ! -r "$DGX_QWEN_API_KEY_FILE" ] || [ ! -s "$DGX_QWEN_API_KEY_FILE" ]; then
     echo 'Harness: model API key file is missing, empty, or unreadable.' >&2
     exit 1

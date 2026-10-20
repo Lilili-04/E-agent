@@ -3,50 +3,38 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.en.md
 /e-agent-environmental-policy-q-a-system:
-  en: 9399a3ea3a27bb16
-  zh: d6de05813d0e51fa
+  en: 8c8b7f809ab56af3
+  zh: fe1c7a64cb9212e7
 /e-agent-environmental-policy-q-a-system/reading-guide:
-  en: 7d3b6ec8e879dcb8
-  zh: a6c81f77c0a75174
+  en: 42ef38250a41b07c
+  zh: d601f1146cc65eaf
 /e-agent-environmental-policy-q-a-system/capabilities-and-scope:
-  en: 4234a9f95b73ad43
-  zh: e6be7f5c40b4feec
+  en: 806092bd03e820d9
+  zh: 86eb5457e241d851
 /e-agent-environmental-policy-q-a-system/architecture-and-question-answering-flow:
-  en: 344dc39f3c4cdbd9
-  zh: 94c8a6ba7502314e
-/e-agent-environmental-policy-q-a-system/multiple-recall-channels-three-categories-four-branches:
-  en: 659b836cf65a658f
-  zh: 48e50817fa1d4157
-/e-agent-environmental-policy-q-a-system/multiple-recall-channels-three-categories-four-branches/who-selects-tools-and-recall-channels:
-  en: fd55f77a94360733
-  zh: 58c93b0f146b3f6a
-/e-agent-environmental-policy-q-a-system/multiple-recall-channels-three-categories-four-branches/how-rules-classify-questions:
-  en: c74348a86ee997c8
-  zh: 54578665b049ded0
-/e-agent-environmental-policy-q-a-system/choose-how-to-use-or-deploy:
-  en: 5339bd12992ad597
-  zh: b47becc10e210ab0
-/e-agent-environmental-policy-q-a-system/start-restart-and-update:
-  en: 15d2dab45afb472a
-  zh: 82c4619add5ef6f6
-/e-agent-environmental-policy-q-a-system/start-restart-and-update/a-dgx-web-application:
-  en: 900251594bf59d40
-  zh: a77f759fc8f544c9
-/e-agent-environmental-policy-q-a-system/start-restart-and-update/b-local-harness-connected-to-dgx:
-  en: 0d15b4a91f8904a8
-  zh: c83a4f124b91fd29
-/e-agent-environmental-policy-q-a-system/dgx-database-viewers:
-  en: a299652180230af2
-  zh: f7ca28ca79f3e74a
-/e-agent-environmental-policy-q-a-system/collaboration-and-data-preparation:
-  en: 773da6c77dcdbc45
-  zh: b7d153e32dbd90a2
-/e-agent-environmental-policy-q-a-system/verification-and-common-issues:
-  en: 9cb8b9f56ee44e44
-  zh: 0eeb1ef5cb186428
-/e-agent-environmental-policy-q-a-system/code-and-documentation:
-  en: 751e7b52b300d37d
-  zh: e17fd4c9b9f112d5
+  en: 90d12617ae0c11f3
+  zh: 7e44aef3b7812706
+/e-agent-environmental-policy-q-a-system/multiple-recall-channels:
+  en: ef951119eb6d390d
+  zh: e2af12ccd5c3feb1
+/e-agent-environmental-policy-q-a-system/deployment-arrangements:
+  en: 3259cb1d98590427
+  zh: 7ca90cd8f2fb1a51
+/e-agent-environmental-policy-q-a-system/startup-and-updates:
+  en: 04085974766b97c9
+  zh: 15714ffcee877128
+/e-agent-environmental-policy-q-a-system/database-viewers:
+  en: 263bf333290463fe
+  zh: 696ec61fd35ba71b
+/e-agent-environmental-policy-q-a-system/collaboration-and-data:
+  en: c9880c959f6d013d
+  zh: 3d1e11803c7241eb
+/e-agent-environmental-policy-q-a-system/verification-and-limitations:
+  en: b1c7c061439c36d6
+  zh: 9a8110396ca7ecce
+/e-agent-environmental-policy-q-a-system/documentation:
+  en: bc25070fc166f851
+  zh: b87a081d92361d3a
 /e-agent-environmental-policy-q-a-system/license:
-  en: f370bf50e60d7591
-  zh: ff42d2fc354c5513
+  en: 007d8607ffad48e1
+  zh: e817373490b44f2a

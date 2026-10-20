@@ -7,6 +7,9 @@ A service can be a core spine service, a swappable capability seam, a bundle/com
 
 ```mermaid
 flowchart LR
+  pkg_experimental_environment_policy["experimental-environment-policy"]
+  svc_environmentPolicyKnowledge["ctx.environmentPolicyKnowledge<br/>Legacy policy retrieval"]
+  svc_environmentPolicyV2["ctx.environmentPolicyV2<br/>Policy discovery and source reading"]
   pkg_hmr["hmr"]
   svc_hmr["ctx.hmr<br/>Serialized module and configuration reloads"]
   pkg_app_boot["app-boot"]
@@ -318,6 +321,8 @@ flowchart LR
   pkg_experimental_browser_use_stagehand_native --> svc_browserUse
   pkg_experimental_computer_use_cua_driver_mcp --> svc_computerUse
   pkg_experimental_computer_use_cua_driver_native --> svc_computerUse
+  pkg_experimental_environment_policy --> svc_environmentPolicyKnowledge
+  pkg_experimental_environment_policy --> svc_environmentPolicyV2
   pkg_experimental_ptc_runtime_python --> svc_ptcRuntime
   pkg_experimental_speech_to_text --> svc_speechToText
   pkg_experimental_speech_to_text_sensevoice --> svc_speechToText
@@ -453,6 +458,8 @@ flowchart LR
   svc_deepseekLlmApiExtensions --> pkg_llm_deepseek
   svc_directoryPicker --> pkg_api_workspace_controller
   svc_dynamicCordisRunner --> pkg_tool_cordis
+  svc_environmentPolicyKnowledge --> pkg_experimental_environment_policy
+  svc_environmentPolicyV2 --> pkg_experimental_environment_policy
   svc_fileReferences --> pkg_api_session_controller
   svc_fileUploads --> pkg_api_session_controller
   svc_fs --> pkg_tool_fs
@@ -567,6 +574,8 @@ flowchart LR
 
 | ctx key | Role | Owner | Implementations | Direct consumers | Companion plugins | Note |
 | --- | --- | --- | --- | --- | --- | --- |
+| `ctx.environmentPolicyKnowledge` | `service` | [`experimental-environment-policy`](../packages/experimental/environment-policy) | - | [`experimental-environment-policy`](../packages/experimental/environment-policy) | - | Legacy SQLite and HTTP providers serve the original policy_search tool. |
+| `ctx.environmentPolicyV2` | `service` | [`experimental-environment-policy`](../packages/experimental/environment-policy) | - | [`experimental-environment-policy`](../packages/experimental/environment-policy) | - | Harness reads mounted SQLite and verified DGX vector candidates through policy_search and policy_read. |
 | `ctx.hmr` | `core` | [`hmr`](../packages/boot/hmr) | - | [`app-boot`](../packages/boot/app-boot) | - | Owns module and exact configuration watchers; application mutations share its queue and automatic reloads await the application file lock. |
 | `ctx.pluginRegistryProbe` | `core` | [`client-ui-plugin-manager`](../packages/client/ui-plugin-manager) | - | [`client-ui-plugin-manager`](../packages/client/ui-plugin-manager) | - | Races public registry responses on the Host; the Client owns the initial registry recommendation. |
 | `ctx.pluginManager` | `core` | [`plugin-manager`](../packages/boot/plugin-manager) | - | [`plugin-manager`](../packages/boot/plugin-manager), `ui-settings-plugin-inventory` | - | Shares profile package operations with the CLI and reports persisted and running state to Web and agent callers. |

@@ -108,6 +108,16 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'environmentPolicyKnowledge', pkg: 'experimental-environment-policy', title: 'Legacy policy retrieval',
+    mode: 'service', consumers: ['experimental-environment-policy'],
+    note: 'Legacy SQLite and HTTP providers serve the original policy_search tool.',
+  },
+  {
+    key: 'environmentPolicyV2', pkg: 'experimental-environment-policy', title: 'Policy discovery and source reading',
+    mode: 'service', consumers: ['experimental-environment-policy'],
+    note: 'Harness reads mounted SQLite and verified DGX vector candidates through policy_search and policy_read.',
+  },
+  {
     key: 'hmr',
     pkg: 'hmr',
     title: 'Serialized module and configuration reloads',

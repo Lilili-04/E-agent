@@ -8,7 +8,7 @@ import { withDefaultWeb, webGet } from './default-web-process.ts'
 
 const preset = fileURLToPath(new URL('../../../../config/examples/environment-policy-dgx.patch.yml', import.meta.url))
 
-it('boots the policy preset, Qwen route and clock without opening a database or requiring a live model', async (test) => {
+it('boots the policy preset, Qwen route and clock before preset-local data is opened', async (test) => {
   test.onTestFinished(() => { vi.unstubAllEnvs() })
   try {
     await withDefaultWeb(test, async ({ url, request }) => {
@@ -29,8 +29,9 @@ it('boots the policy preset, Qwen route and clock without opening a database or 
       prepare: async (root) => {
         const token = join(root, 'policy-token')
         await writeFile(token, 'keyless-deployment-fixture-token', { mode: 0o600 })
-        vi.stubEnv('DGX_POLICY_API_URL', 'http://127.0.0.1:1')
-        vi.stubEnv('DGX_POLICY_API_TOKEN_FILE', token)
+        vi.stubEnv('POLICY_V2_DB_PATH', join(root, 'policy-v2.sqlite'))
+        vi.stubEnv('POLICY_V2_COMPATIBILITY_PATH', token)
+        vi.stubEnv('POLICY_V2_SEMANTIC_CONFIG_PATH', token)
         vi.stubEnv('DGX_QWEN38_API_KEY', 'keyless-deployment-no-model-call')
       },
     })

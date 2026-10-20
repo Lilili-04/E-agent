@@ -24,7 +24,8 @@ async function fixture(run) {
     const env = {
       PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
       HARNESS_TRUSTED_HOSTS: '127.0.0.1:3080',
-      DGX_POLICY_API_TOKEN_FILE: policy,
+      POLICY_V2_DB_PATH: policy,
+      POLICY_V2_COMPATIBILITY_PATH: policy,
       DGX_QWEN_API_KEY_FILE: model,
       EXPECTED_KEY: 'keyless-model-secret',
       ARGS_OUTPUT: output,
@@ -47,14 +48,14 @@ test('loads the model secret and delegates unchanged arguments to dsh', posix, a
   })
 })
 
-test('rejects a missing policy credential without exposing the model key', posix, async () => {
+test('rejects missing policy data without exposing the model key', posix, async () => {
   await fixture(async ({ env, policy }) => {
     await rm(policy)
     const result = spawnSync('/bin/sh', [entrypoint, 'web'], { env, encoding: 'utf8', timeout: 10000 })
     assert.equal(result.error, undefined)
     assert.equal(result.signal, null)
     assert.equal(result.status, 1)
-    assert.match(result.stderr, /policy token file/u)
+    assert.match(result.stderr, /policy data file/u)
     assert.doesNotMatch(result.stdout + result.stderr, /keyless-model-secret/u)
   })
 })
