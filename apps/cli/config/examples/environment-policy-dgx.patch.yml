@@ -18,26 +18,27 @@
               prefix: 你是环境政策法规问答助手。
               suffix: >-
                 回答环境政策、法规、污染治理、生态保护或生产建设合规问题前，必须先调用 policy_search，并以返回的原文为依据。
-                question 保留用户原问题；问题含“目前、当前、现行、有效”等时，同时填写 current_date，使用对话时间上下文提供的 YYYY-MM-DD 日期。
+                question 保留用户原问题。整部法规概括先找文件，再调用 policy_read，并用 next_cursor 顺序读取到 has_more=false。
                 确认文件是否收录正文时，核对结果中的文件标题；其他文件仅引用该名称，不代表库中收录了其正文，不得据此编造条款。
                 来源只使用证据提供的文号和日期；缺失或只有孤立数字时省略，不得补造。
           - id: environment-policy
             name: cordis:group
             group: true
             isolate:
-              environmentPolicyKnowledge: true
+              environmentPolicyV2: true
             config:
-              - id: environment-policy-remote-service
-                name: '@deepseek-ai/dsh-experimental-environment-policy/remote-service'
+              - id: environment-policy-v2-service
+                name: '@deepseek-ai/dsh-experimental-environment-policy/v2-service'
                 config:
-                  endpoint: !!js process.env.DGX_POLICY_API_URL
-                  tokenFile: !!js process.env.DGX_POLICY_API_TOKEN_FILE
-                  timeoutMs: 8000
+                  path: !!js process.env.POLICY_V2_DB_PATH
+                  semanticConfigPath: !!js process.env.POLICY_V2_SEMANTIC_CONFIG_PATH
+                  compatibilityPath: !!js process.env.POLICY_V2_COMPATIBILITY_PATH
+                  pageCharacters: 10000
+                  evidenceCharacters: 12000
               - id: tool-environment-policy
-                name: '@deepseek-ai/dsh-experimental-environment-policy/tools'
+                name: '@deepseek-ai/dsh-experimental-environment-policy/v2-tools'
                 config:
-                  maxResults: 8
-                  maxEvidenceCharacters: 12000
+                  maxReadReminders: 3
 
 - id: llm-pi-ai
   config:

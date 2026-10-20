@@ -11,6 +11,16 @@ kind: "package-reference"
 
 本包提供实验性的国家级环境政策法规知识能力。它盘点和解析 Markdown 来源，抽取可审核元数据，校验模型辅助生成的 description，构建带版本标识的 SQLite 索引，规划法规查询，并通过 Cordis 服务和 `policy_search` 工具返回有大小限制的原文证据。它暂不处理省级文档，也不独立判断法律效力。
 
+### 本地 v2 试用
+
+同时挂载 `./v2-service` 和 `./v2-tools`。独立 SQLite 快照包含 `documents`、`content_units` 两张业务表和两套 FTS5 索引。正文与问题统一使用 Jieba 分词，由原生 BM25 排序标题/description 或正文命中。`policy_search` 查找文件版本或片段，`policy_read` 连续读取指定版本。DGX 现有服务与本地试用独立。
+
+在仓库根目录执行 `python scripts/prepare-policy-v2.py --workspace .. --legacy data/policy-national-v1.sqlite --output .dsh-build/policy-v2-documents.jsonl --corpus national` 准备国家级语料，再执行 `node --import tsx/esm scripts/build-policy-v2.ts .dsh-build/policy-v2-documents.jsonl data/policy-v2-trial.sqlite` 建库。输出必须使用新文件名，脚本拒绝覆盖旧库。Python 需要 `openpyxl`。Markdown、description 和清单工作簿仍不进入 Git。导入文件旁生成审核报告及旧向量映射 JSON；与原文哈希不符的摘要、占位元数据不入库。
+
+服务配置包括 `path`、可选但须同时填写的 `semanticConfigPath` 和 `compatibilityPath`，以及 `candidateLimit`、`resultLimit`、`pageCharacters`、`evidenceCharacters` 上限。语义配置 JSON 提供 DGX 的 Embedding/Chroma 地址、模型、集合和超时。旧向量须通过构建版本、原文哈希和片段校验；失败会明确报告，BM25 仍可使用。查询不会写入向量集合，语义覆盖范围以原国家级索引为准。
+
+`policy_read` 接收 `document_id`、`scope`（`full`、`section`、`article`）、章节/条款的精确 `selector` 和可选 `cursor`。须用 `next_cursor` 继续读到 `has_more=false`。超长单元跨页时标记 `unit_fragments=true`；条款不存在时返回 `found=false`。`source_complete` 描述导入的原文完整性，不代表法律效力。搜索片段标记 `excerpted` 时须继续读取。每个 Agent 的每轮对话独立检查未完成的全文读取，提醒达到配置上限后以错误停止；该检查不能验证模型的理解，超过上下文窗口的长文件仍依赖压缩。
+
 ## 目录
 
 - [Use this package](#use-this-package)

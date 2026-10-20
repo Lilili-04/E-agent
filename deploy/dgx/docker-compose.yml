@@ -16,14 +16,26 @@ services:
       - "${HARNESS_BIND_ADDRESS:?set HARNESS_BIND_ADDRESS}:${HARNESS_PORT:-3080}:3080"
     environment:
       HARNESS_TRUSTED_HOSTS: ${HARNESS_TRUSTED_HOSTS:?set HARNESS_TRUSTED_HOSTS}
-      DGX_POLICY_API_URL: ${DGX_POLICY_API_URL:-http://e-agent-policy-api:8080}
-      DGX_POLICY_API_TOKEN_FILE: /run/secrets/policy_token
+      POLICY_V2_DB_PATH: /policy-data/${POLICY_V2_DB_FILE:-policy-v2-national.sqlite}
+      POLICY_V2_COMPATIBILITY_PATH: /policy-data/${POLICY_V2_COMPATIBILITY_FILE:-policy-v2-documents.compat.json}
+      POLICY_V2_SEMANTIC_CONFIG_PATH: /state/dsh/deployment/policy-semantic.json
+      POLICY_EMBEDDING_URL: ${POLICY_EMBEDDING_URL:-http://vllm-qwen3-embedding-4b:8000}
+      POLICY_CHROMA_URL: ${POLICY_CHROMA_URL:-http://chroma:8000}
+      POLICY_EMBEDDING_MODEL: ${POLICY_EMBEDDING_MODEL:-qwen3-embedding-4b}
+      POLICY_DOCUMENT_COLLECTION: ${POLICY_DOCUMENT_COLLECTION:?set POLICY_DOCUMENT_COLLECTION}
+      POLICY_PASSAGE_COLLECTION: ${POLICY_PASSAGE_COLLECTION:?set POLICY_PASSAGE_COLLECTION}
+      POLICY_SEMANTIC_TIMEOUT_MS: ${POLICY_SEMANTIC_TIMEOUT_MS:-5000}
       DGX_QWEN_API_BASE_URL: ${DGX_QWEN_API_BASE_URL:-http://vllm-qwen38-27b:8000/v1}
       DGX_QWEN_API_KEY_FILE: /run/secrets/qwen_api_key
     secrets:
-      - policy_token
       - qwen_api_key
     volumes:
+      - type: bind
+        source: ${POLICY_V2_DATA_DIR:?set POLICY_V2_DATA_DIR}
+        target: /policy-data
+        read_only: true
+        bind:
+          create_host_path: false
       - type: bind
         source: ${HARNESS_STATE_DIR:?set HARNESS_STATE_DIR}
         target: /state
@@ -54,8 +66,6 @@ services:
         max-file: "3"
 
 secrets:
-  policy_token:
-    file: ${POLICY_API_TOKEN_FILE:?set POLICY_API_TOKEN_FILE}
   qwen_api_key:
     file: ${QWEN_API_KEY_FILE:?set QWEN_API_KEY_FILE}
 

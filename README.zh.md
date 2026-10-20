@@ -2,249 +2,117 @@
 
 [English](README.en.md) | 中文
 
-E-agent 基于 DeepSeek Harness（DSH），面向国家级中文环境法律、法规、标准、规划和政策文件提供 RAG（检索增强生成）问答。系统先检索政策原文，再由模型组织回答并列出来源。
-
-普通使用者可以直接访问 DGX 网页；开发者也可以在本地运行 Harness，连接 DGX 的检索和模型服务。应用、检索服务、向量数据库和模型分别维护，Harness 镜像不包含语料、数据库或模型权重。
+E-agent 基于 DeepSeek Harness，先查环境政策原文，再由模型生成带来源的回答。本次新版仅处理国家级语料。
 
 ## 阅读导航
 
 - [项目能力与范围](#scope)
 - [架构与问答链路](#architecture)
-- [多路召回：三类、四路](#retrieval)
-- [选择使用与部署方式](#deployment)
-- [启动、重启与更新](#startup)
-- [DGX 数据库可视化](#db-viewers)
-- [协作开发与数据准备](#collaboration)
-- [验证与常见问题](#verification)
-- [代码与文档入口](#documentation)
+- [多路召回](#retrieval)
+- [部署方式](#deployment)
+- [启动与更新](#startup)
+- [数据库可视化](#db-viewers)
+- [协作与数据](#collaboration)
+- [验证与局限](#verification)
+- [文档入口](#documentation)
 - [许可证](#license)
 
 <a id="scope"></a>
 
 ## 项目能力与范围
 
-系统支持按法规名称、文号和条号定位正文，按主题寻找相关政策，以及根据库内资料回答条款、概述、发布日期、效力状态和版本问题。
-
-当前 SQLite 索引包含 **494 份国家级文件、61,455 个正文内容单元**，数据库约 **835 MiB**。内容单元可以是一条条款、一段正文、列表或标题，不等于一整份文件。语料尚未覆盖省级文件。
-
-回答受语料覆盖、解析质量、元数据和模型归纳能力限制。效力状态来自目录记录，系统不独立认定法律效力；部分文号、日期元数据仍有异常。返回证据、标题命中或功能测试通过，均不能直接视为回答准确率保证。
+支持法规名称、文号、条号、主题查询和整部文件概括。新版样本库包含 495 份去重国家级文件、63,175 个原文内容单元，约 84.4 MiB；数据库和语料不提交 Git。省级未纳入。效力标注来自目录，系统不独立判断法律效力。
 
 <a id="architecture"></a>
 
 ## 架构与问答链路
 
-架构按“原文数据层＋多种检索索引＋统一检索服务”组织。SQLite 是政策内容主库，Chroma 是可重建的语义索引；检索 API 是数据库上面的服务。逻辑职责与容器数量分别理解。
-
-这里的“检索 API”通常指 DGX 上运行的政策检索后端程序；严格来说，API 是该程序对外提供的 HTTP 接口。`policy_search` 将问题发送到 `POST /v1/policy/search`，后端执行规则解析和数据库检索，返回原文证据及检索信息，不直接生成最终回答。
-
-| 组件 | 职责 | 部署与数据 |
-| --- | --- | --- |
-| Harness | 提供网页、会话、agent（智能体）和工具执行 | 可在本地或 DGX 容器运行，独立保存状态和工作区 |
-| `policy_search` | 模型调用的政策查询工具 | 在 Harness 中执行，通过 HTTP 请求检索 API |
-| 检索 API | 解析问题、协调召回、读取原文、合并证据 | 独立 CPU 容器，只读挂载 SQLite |
-| SQLite | 保存正文、标题、日期、元数据、description 和关键词索引 | 独立持久化的文件，由检索 API 打开，无需 SQL 服务容器 |
-| Chroma | 保存向量、原文关联标识和可选文本副本 | 独立容器与持久化目录，文本副本不作为引用依据 |
-| Qwen3-Embedding-4B | 将问题和索引文本转换成向量 | 独立 GPU 服务，用于语义检索 |
-| Qwen3.8-27B | 决定工具调用，根据证据生成回答 | 独立 GPU 服务，通过 OpenAI 兼容 API 调用 |
-
-**离线建库**：政策文件经 MinerU 解析为 Markdown，结合源文件清单、元数据和 description 构建 SQLite；再将文档与正文片段向量化，写入 Chroma。普通查询和服务重启不重新解析语料或重建向量。
-
-**在线问答**：Harness 将问题交给回答模型；模型发起 `policy_search` 调用，工具请求检索 API；API 返回有限原文证据后，模型继续生成带来源的回答。问题规划器使用代码规则，不额外调用规划模型。
+新版部署把检索代码放在 Harness 容器里。SQLite 原文文件放在宿主机，以只读目录挂载给 Harness；Chroma、Embedding 模型、问答模型分别运行。不需要 SQLite 服务容器，也不需要旧检索 API 参与这条新链路。仓库保留旧 API 供已有部署使用；更新代码不等于已经更新 DGX。
 
 ```text
-Question -> Harness -> Answer model requests policy_search
-                              |
-                         policy_search
-                              | HTTP
-                         Retrieval API
-                              |
-                    Plan and recall candidates
-                              |
-                    Merge and deduplicate IDs
-                              |
-                    SQLite batch source reads
-                              |
-                 Validate, filter, fuse ranks, limit
-                              |
-                        Tool evidence
-                              |
-                  Answer model -> Harness -> User
+User → Harness → Answer model calls policy_search
+                    ├─ Exact lookup / Jieba＋BM25 → Mounted SQLite
+                    └─ Embedding → Chroma → Validate and read SQLite sources
+          Model calls policy_read as needed → Article / section / full pages
+          Model answers from source evidence → User
 ```
 
-上图描述当前仓库代码。**更新 Harness 不会同步更新独立检索 API**；服务器是否采用这套实现，需要核对各自的镜像与代码版本。API 的批量取证、索引校验和发布操作见[检索服务部署指南](packages/experimental/environment-policy/deploy/README.zh.md)。
+`documents` 保存每份版本的标题、文号、日期、效力标注、description、全文及来源路径。`content_units` 保存原文条款、标题、段落及其顺序、章节和行号。两套 FTS5 索引分别检索标题/description 和正文，FTS5 的影子表不是业务表。摘要帮助发现文件，回答引用仍以原文为依据。
 
-工具默认最多返回 8 条证据、原文合计最多 12,000 字符，并非整部法规全文。同一法规的多段证据可以共用一个来源编号，例如 `[1]`。工具在返回候选中优先保留同名法规发布日期最新的版本，历史或版本比较问题允许保留多个版本；这不保证语料已经收录最新法律版本。
+`policy_search` 返回文件候选或证据片段；`policy_read` 按文档 ID 读取确定版本，不执行相关性召回。概括整部法规时须顺序读到 `has_more=false`，长单元也可跨页。同名版本分别返回，不能只凭发布日期认定最新版本现行有效。
 
 <a id="retrieval"></a>
 
-## 多路召回：三类、四路
+## 多路召回
 
-按功能分为精确、关键词和语义三类；将语义召回拆开，混合模式有下面四路检索支路。API 根据问题选择通道，并非每次全部执行。
+代码规则决定通道：明确法规和条号直接定位；全文概括先确定文件再读取全文；明确法规下的具体主题限定在该文件正文；一般主题融合正文 BM25、文档向量和片段向量。模型决定调用工具和如何根据证据回答。
 
-| 支路 | 适合的问题 | 候选从哪里来 |
-| --- | --- | --- |
-| 精确召回 | “核安全法第一条是什么” | SQLite 法规名称、文号、条号定位 |
-| 关键词召回 | “哪些政策涉及畜禽养殖污染” | SQLite 标题检索、正文 BM25 检索 |
-| 文档语义召回 | 用自然语言寻找相关政策文件 | 问题向量匹配 Chroma 文档向量，再在候选文件中找正文 |
-| 片段语义召回 | 用自然语言寻找相关条款、段落 | 问题向量匹配 Chroma 正文片段向量，返回原文位置 |
-
-两路语义查询复用一次问题向量化。各通道返回原文关联标识，统一回到 SQLite 读取、校验并形成证据；当前排名融合不依赖额外的 Reranker 模型。
-
-description 用于帮助发现文件，参与文档向量输入，不能替代法规正文。它在混合模式下不单独算第五路；纯 SQLite 模式另有 description 词法辅助召回。向量输入随构建版本变化，具体规则见[检索服务部署指南](packages/experimental/environment-policy/deploy/README.zh.md)。
-
-### 谁决定调用工具与召回通道
-
-模型选择工具，检索 API 中的代码规则选择具体召回通道，两者是不同层面的决策。
-
-| 决策 | 负责方 |
-| --- | --- |
-| 是否调用政策库、提交什么问题 | 回答模型，受政策问答提示词约束 |
-| 使用哪些召回通道、设置哪些检索条件 | 检索 API 的问题规划器，通过代码规则判断 |
-| 如何读取、过滤、排序和合并候选 | 检索 API 的检索与取证代码 |
-| 如何解释证据并列出来源 | 回答模型 |
-
-`policy_search` 的模型可用参数是 `question`、可选的 `topic` 和 `current_date`，没有“选择召回通道”的参数。提示词要求政策问题先调用工具；实际工具调用仍由模型提出，Harness 负责执行。
-
-### 规则如何判断问题
-
-规划器通过字符串匹配、正则表达式和条件判断解析问题：用库内标题及去掉“中华人民共和国”前缀的名称匹配法规，识别书名号、文号和“第二十六条”等表达；结合“讲了什么”、日期及效力相关表达确定查询意图和过滤条件。它不使用额外的大模型自由推理检索路线。
-
-- “水土保持法第二十六条是什么？”：模型调用工具后，规划器识别法规名称和条号，定位指定条款，跳过语义召回。
-- “养殖场的废水能直接排到河里吗？”：没有明确法规目标，在配置了向量服务的混合模式下，并行执行关键词召回与语义召回；语义检索内部查询文档和片段两个集合。
-
-Embedding 模型与 Chroma 负责语义通道内的相似性计算，“是否启用语义通道”由规划器的规则决定。规则便于测试和复现，但名称或意图误判仍可能导致选错通道、漏掉证据；相似度也不代表证据支持问题前提。具体解析与通道条件见[查询规划代码](packages/experimental/environment-policy/src/query.ts)。
+Jieba 用于正文与问题分词，SQLite FTS5 原生 BM25 排序，候选融合后统一取原文。既有 DGX 向量只在构建 ID、原文哈希和片段映射一致时复用。语义服务失败会明确报告，仍可执行 BM25。查询不会自动重建向量。
 
 <a id="deployment"></a>
 
-<a id="run"></a>
+## 部署方式
 
-## 选择使用与部署方式
-
-项目只提供以下两种部署方式；两者的政策数据库、向量索引和数据库可视化均在 DGX。只使用网页的人无需部署代码。
-
-| 方式 | 适用场景 | 需要准备 |
+| 方式 | Harness / SQLite | 向量与模型 |
 | --- | --- | --- |
-| A．DGX 网页应用 | 日常问答、演示、集中运行 | 浏览器、内网连接、负责人私密提供的认证地址 |
-| B．本地 Harness＋DGX 检索 | 修改前端、工具或 agent 配置 | 代码、Node/pnpm、启动配置、检索及模型凭据 |
+| A．DGX 网页应用 | Harness 容器＋DGX 宿主机只读挂载 SQLite | DGX 独立容器 |
+| B．本地开发验证 | 本地 Harness＋同版本 SQLite 快照 | 调用 DGX；内部端口可用 SSH 隧道 |
 
-A、B 都不要求使用者下载政策语料和模型权重。两者共用 DGX 检索 API 和模型服务；本地 Harness 不连接本地政策库，远程接口不可用时直接报错。
+A 的部署入口见 [DGX 指南](docs/user/guide/dgx-deployment.zh.md)。B 是新版检索的开发验证组合，需要额外取得 SQLite 与匹配映射文件。旧的“本地 Harness＋远程检索 API”配置仍调用旧版工具，不能用来验证本次 `policy_read` 链路。
 
-DGX 应用入口为 `http://172.27.153.44:3080/`，首次访问需要当前进程的认证链接。该实例共享会话、设置和工作区，不提供多租户隔离。检索 API 为 `http://172.27.153.44:18080`，用于工具查询，不是聊天页面；Docker 内部地址与宿主机端口见[DGX 应用部署指南](docs/user/guide/dgx-deployment.zh.md)。
+<a id="run"></a>
+<a id="run-from-source"></a>
 
 <a id="startup"></a>
 
-## 启动、重启与更新
+## 启动与更新
 
-### A．DGX 网页应用
-
-首次部署按[DGX 应用部署指南](docs/user/guide/dgx-deployment.zh.md)准备状态目录、凭据、网络并构建。`deploy/dgx` 的 Compose 项目只管理 Harness，依赖已经运行的检索、Chroma 和模型服务。
-
-已有部署仅重启 Harness 时，在 DGX 的仓库目录执行：
+DGX 使用 `deploy/dgx/.env.example` 配置只读数据目录、向量集合、模型接口和密钥文件。首次启动前需准备 SQLite 与匹配的 `policy-v2-documents.compat.json`。合并后由维护者部署数据和应用，参见 [DGX 指南](docs/user/guide/dgx-deployment.zh.md)。
 
 ```bash
 cd deploy/dgx
-docker compose restart harness
+export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
+docker compose config --quiet
+docker compose build
+docker compose up -d --wait
 ```
 
-重启后从日志获取当前认证地址。源码更新后需要重新构建镜像，单纯 `restart` 不加载新代码。检索 API、SQLite、向量索引和模型分别更新，操作见各自部署指南；停止或重建 Harness 不会替它们重建数据。
+依赖、配置和数据未变化时，仅需 `docker compose restart harness`。代码变化后重建镜像；数据变化时准备新目录并同时切换 SQLite 与映射文件，保留旧目录用于回滚。不要把 Windows 的 node_modules 或私有启动配置复制到 Linux。
 
-<a id="run-from-source"></a>
-
-### B．本地 Harness 连接 DGX
-
-新协作者先准备仓库声明的运行环境：Node.js `^22.19.0 || >=24.0.0`，pnpm 版本按 `package.json` 的 `packageManager` 固定。首次在仓库根目录安装和构建：
-
-```powershell
-pnpm install --frozen-lockfile
-pnpm run build
-```
-
-再按[部署指南](docs/user/guide/dgx-deployment.zh.md)末尾的本地用法准备私有 `DSH_HOME`、检索地址、令牌文件和模型凭据，使用仓库内可复用的预设生成启动配置。新克隆的仓库没有 `.dsh-build/`；不要直接使用下一段的本机配置。
-
-**当前已有 Windows 工作区**已准备远程启动配置。停止旧进程后，在仓库根目录启动或重启：
-
-```powershell
-pnpm dsh web --patch .dsh-build/environment-policy-web.patch.yml --no-open
-```
-
-打开终端打印的认证地址，通常为 `http://127.0.0.1:3080`。该私有配置使用 DGX 检索 API，令牌保存在 `.dsh-build/dgx-policy.token`；其中可能含本机绝对路径，不能原样复制到其他电脑。
-
-依赖和构建产物齐全时，重启只需启动命令。尽量在同一个交互式终端完成安装、构建和启动；Codex 执行环境与用户终端的 Node、pnpm、代理和依赖链接状态可能不同。缺少 `node_modules/.modules.yaml` 时，pnpm 可能重新检查并链接整个 workspace，导致启动变慢。只有依赖变化或构建产物需要更新时才重新安装、构建。
+本地依赖和构建齐全时只运行启动命令，不重复安装和建库。用户终端与 Codex 执行环境的 Node、pnpm、代理和依赖链接可能不同；缺失 `node_modules/.modules.yaml` 可能导致 pnpm 重新链接整个 workspace，启动明显变慢。开发工具组合、参数和离线建库命令见 [插件说明](packages/experimental/environment-policy/README.zh.md)。
 
 <a id="db-viewers"></a>
 
-## DGX 数据库可视化
+## 数据库可视化
 
-A、B 共用一套可选的 DGX 可视化组件，不再按 Harness 的运行位置分别部署。它是独立的 Compose 项目，停止或更新它不会停止问答服务或重建数据库。
-
-| 页面 | 默认内网地址 | 用途 |
-| --- | --- | --- |
-| Datasette | `http://172.27.153.44:18101` | 浏览 SQLite 表、政策正文、元数据和只读 SQL 查询 |
-| ChromaDB UI | `http://172.27.153.44:18102` | 浏览集合、记录及元数据，使用已有向量查询 |
-
-两个页面使用同一份独立登录配置。SQLite 文件只读挂载；Chroma 经网关只开放读取和查询接口，拒绝新增、修改、删除及重置。Chroma 记录每批最多读取 500 条，表格筛选作用于当前批次。可视化不替代检索 API，也不额外启动 GPU 模型。
-
-仓库提供配置与测试，页面需由维护者在 DGX 显式部署后才可访问。准备账号、配置路径、启动、验证和更新步骤见[数据库可视化部署指南](deploy/db-viewers/README.zh.md)。
+DGX 可选部署一套 Datasette 与 ChromaDB UI。更新新版 SQLite 后，可视化的只读挂载也须指向相同快照。可视化独立于 Harness，见 [部署指南](deploy/db-viewers/README.zh.md)。
 
 <a id="collaboration"></a>
 
-## 协作开发与数据准备
+## 协作与数据
 
-Git 保存源代码、锁文件、部署模板和文档。SQLite、政策语料、向量索引、模型权重、会话状态、凭据和本机私有配置需要分别准备，不随仓库提交。
-
-| 工作内容 | 除代码外需要什么 |
-| --- | --- |
-| 使用 DGX 网页 | 内网及认证地址 |
-| 本地开发并调用 DGX | 检索接口与令牌、可用模型与凭据、本机启动配置 |
-| 浏览 DGX 数据库 | 内网、已部署的可视化页面及独立登录账号 |
-| 重建 SQLite | Markdown 原文、源文件清单、元数据、description 等构建输入 |
-| 重建向量索引 | 对应 SQLite 快照、固定版本的 Embedding 模型、输入及切分规则、Chroma |
-
-数据准备见[数据说明](data/README.zh.md)，SQLite 与向量索引的成套校验、发布和回滚见[检索服务部署指南](packages/experimental/environment-policy/deploy/README.zh.md)。认证链接、API 令牌和模型凭据通过私密渠道分发，不写入 README 或提交到 Git。
+Git 保存代码、依赖锁文件、部署模板和文档，不保存 SQLite、语料、摘要结果、向量、模型、凭据或私有运行记录。协作者运行新版需要 SQLite 快照、对应向量映射、DGX 接口配置和模型凭据；建库还需原始 Markdown、摘要和法规目录。Dependabot、Renovate 未启用。
 
 <a id="verification"></a>
 
-## 验证与常见问题
+## 验证与局限
 
-从仓库根目录运行检索插件的相关检查：
+本地回归包括 7 项工具/分词/分页/向量关联测试、10 个真实检索问题，以及通过 DGX 模型执行的《水土保持法》《核安全法》全文概括。495 份文件共 1,068 页重组后与导入原文一致；这不代表逐份核对过 PDF，也不代表答案准确率。
 
-```powershell
-node_modules/.bin/vitest.cmd run packages/experimental/environment-policy/tests
-node_modules/.bin/tsc.cmd -p packages/experimental/environment-policy/tsconfig.json --noEmit
-```
-
-以上为 Windows 命令。评测口径和复现方法见[检索效果评测](docs/user/guide/policy-retrieval-evaluation.zh.md)，部署验证见[DGX 应用部署指南](docs/user/guide/dgx-deployment.zh.md)。
-
-| 现象 | 检查与处理 |
-| --- | --- |
-| 网页打不开或返回 401 | 区分网页与检索端口，检查内网、访问地址和当前进程认证链接 |
-| 检索或模型返回 401 | 分别核对检索令牌和模型凭据，两者不是同一个凭据 |
-| 找不到启动 patch | 新克隆不含 `.dsh-build/`，先生成本机配置 |
-| 启动慢 | 检查是否重复安装、构建，以及 Node/pnpm 和依赖链接是否一致 |
-| 回答慢但检索快 | 完整问答还包含工具调用前后的模型推理和输出生成 |
-| 返回的内容不支持问题 | 核对实际正文证据、文件标题和语料覆盖，不能仅看相似度 |
-| 向量失败或超时 | 混合检索保留词法证据；API 整体不可用则报错 |
-| 合并代码后链路没有变化 | 分别核对 Harness 与检索 API 的镜像和版本 |
+主题检索可能召回过宽的候选，部分同名版本条款相近。38 份来源未能无歧义匹配目录元数据；一份旧摘要因原文哈希不符被排除。现有向量映射覆盖 493 条未变化的旧来源记录；新增或变更原文仍可通过 BM25 找到。全文超过模型上下文时，归纳还受压缩保留信息影响。
 
 <a id="documentation"></a>
 
-## 代码与文档入口
+## 文档入口
 
-| 入口 | 内容 |
-| --- | --- |
-| [检索插件](packages/experimental/environment-policy/README.zh.md) | 问题规划、数据服务、工具和检索语义 |
-| [检索服务部署](packages/experimental/environment-policy/deploy/README.zh.md) | API、Docker、混合检索、索引发布与回滚 |
-| [DGX 应用部署](docs/user/guide/dgx-deployment.zh.md) | Harness 容器、访问认证、持久化、更新与排查 |
-| [Agent 预设](apps/cli/config/examples/environment-policy-dgx.patch.yml) | 问答名称、描述、提示词、工具和模型配置 |
-| [数据库可视化](deploy/db-viewers/README.zh.md) | A、B 共用的 DGX 只读浏览页面 |
-| [数据准备](data/README.zh.md) | SQLite 建库输入与快照发布 |
-| [检索效果评测](docs/user/guide/policy-retrieval-evaluation.zh.md) | 评测结果、局限与复现方法 |
-| [开发指南](docs/development.zh.md) | DSH 仓库开发与检查流程 |
-
-环境政策检索代码位于 `packages/experimental/environment-policy/src/`，SQLite 建库入口为 `scripts/environment-policy-build-index.ts`。本项目基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 开发，保留上游框架及其贡献历史。
+- [DGX 应用部署](docs/user/guide/dgx-deployment.zh.md)：挂载、配置、启动和回滚。
+- [检索插件](packages/experimental/environment-policy/README.zh.md)：工具参数和离线建库。
+- [旧检索服务](packages/experimental/environment-policy/deploy/README.zh.md)：仍在使用旧 API 时的维护说明。
+- [数据库可视化](deploy/db-viewers/README.zh.md)：DGX 只读浏览。
+- [开发指南](docs/development.zh.md)：仓库构建和检查。
 
 <a id="license"></a>
 
 ## 许可证
 
-[MIT](LICENSE)。第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+项目沿用上游 [LICENSE](LICENSE)，依赖许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

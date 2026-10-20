@@ -10,7 +10,8 @@ export HARNESS_IMAGE="$image" HARNESS_BIND_ADDRESS=127.0.0.1 HARNESS_PORT=0
 export HARNESS_TRUSTED_HOSTS=127.0.0.1:3080 POLICY_RETRIEVAL_NETWORK="$project"
 export HARNESS_SOURCE_REVISION=0000000 # Fixture only; this smoke never builds an image.
 export HARNESS_STATE_DIR="$root/state" HARNESS_WORKSPACE_DIR="$root/workspace"
-export POLICY_API_TOKEN_FILE="$root/policy-token" QWEN_API_KEY_FILE="$root/qwen-key"
+export QWEN_API_KEY_FILE="$root/qwen-key" POLICY_V2_DATA_DIR="$root/policy-data"
+export POLICY_DOCUMENT_COLLECTION=fixture-documents POLICY_PASSAGE_COLLECTION=fixture-passages
 
 compose() { docker compose --project-name "$project" --env-file /dev/null -f "$compose_file" "$@"; }
 cleanup() {
@@ -26,12 +27,12 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
-mkdir "$root/state" "$root/workspace"
+mkdir "$root/state" "$root/workspace" "$root/policy-data"
 # The outer mktemp directory stays private; these mounts hold only disposable test data.
-chmod 777 "$root/state" "$root/workspace"
-printf '%s' 'keyless-smoke-policy-token-00000000' > "$POLICY_API_TOKEN_FILE"
+chmod 777 "$root/state" "$root/workspace" "$root/policy-data"
 printf '%s' 'keyless-smoke-model-key' > "$QWEN_API_KEY_FILE"
-chmod 444 "$POLICY_API_TOKEN_FILE" "$QWEN_API_KEY_FILE"
+chmod 444 "$QWEN_API_KEY_FILE"
+docker run --rm --entrypoint node --mount "type=bind,src=$POLICY_V2_DATA_DIR,dst=/policy-data" "$image" /app/deploy/dgx/create-smoke-policy.mjs /policy-data
 docker network create "$project" >/dev/null
 compose config --quiet
 compose up --no-build --detach --wait --wait-timeout 180 harness

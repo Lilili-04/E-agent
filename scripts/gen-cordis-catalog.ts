@@ -827,6 +827,14 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  PolicyBuildManifest: 'environment-policy API is documented in packages/experimental/environment-policy/README.md',
+  EnvironmentPolicyExecContext: 'environment-policy API is documented in packages/experimental/environment-policy/README.md',
+  EnvironmentPolicySearchResult: 'environment-policy API is documented in packages/experimental/environment-policy/README.md',
+  PolicyQueryOptions: 'environment-policy API is documented in packages/experimental/environment-policy/README.md',
+  PolicyV2ReadRequest: 'environment-policy API is documented in packages/experimental/environment-policy/README.md',
+  PolicyV2ReadResult: 'environment-policy API is documented in packages/experimental/environment-policy/README.md',
+  PolicyV2SearchRequest: 'environment-policy API is documented in packages/experimental/environment-policy/README.md',
+  PolicyV2SearchResult: 'environment-policy API is documented in packages/experimental/environment-policy/README.md',
   ConnectionFetchHandler: 'shared Fetch dispatch is owned by packages/client/connection/src/rpc.ts',
   ConnectionRequestRejection: 'transport rejection status is owned by packages/client/connection/src/rpc.ts',
   ConnectionTrustRequest: 'transport authentication input is owned by packages/client/connection/src/rpc.ts',

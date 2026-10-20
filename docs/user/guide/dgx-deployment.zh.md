@@ -2,57 +2,35 @@
 
 [English](dgx-deployment.md) | 中文
 
-本指南在 DGX 上用独立 Docker 容器运行 Web 界面和 Agent。浏览器连接该容器；检索 API 协调基于 SQLite 原文数据和 Chroma 索引的关键词、语义通道。SQLite 是嵌入式原文数据库，不是网络服务；逻辑职责与容器部署分别说明。配置位于 [deploy/dgx](../../../deploy/dgx)，可复用的 Agent 预设位于 [environment-policy-dgx.patch.yml](../../../apps/cli/config/examples/environment-policy-dgx.patch.yml)。
+新版由 Harness 容器直接执行检索，SQLite 从宿主机只读挂载，Chroma、Embedding、问答模型分别维护。配置位于 [deploy/dgx](../../../deploy/dgx)，预设位于 [environment-policy-dgx.patch.yml](../../../apps/cli/config/examples/environment-policy-dgx.patch.yml)。
 
 ## 部署结构
 
-Harness 镜像只包含应用代码和依赖，不包含语料、SQLite 文件、向量索引、模型权重或凭据。
-
-| 组件 | 容器 | 持久化数据 / 接口 |
-| --- | --- | --- |
-| Web 界面和 Agent | 新的 Harness Compose 项目 | 独立的 Harness 状态和工作区目录；浏览器端口 3080 |
-| 检索服务 | 已有 `e-agent-policy-api` | 协调召回，只读打开独立持久化的 SQLite 原文快照；Docker 内部 HTTP 8080 |
-| 语义检索索引 | 已有 `chroma` | 独立目录保存可重建的向量和原文标识；Docker 内部 HTTP 8000 |
-| Embedding 模型 | 已有 `vllm-qwen3-embedding-4b` | 自己的模型目录；Docker 内部 HTTP 8000 |
-| 回答模型 | 已有 `vllm-qwen38-27b` | 自己的模型目录；Docker 内部 OpenAI 兼容 HTTP 8000 |
-
-SQLite 是嵌入式数据库，由独立的检索 API 容器只读打开，不对外暴露 SQL 数据库端口。Harness 不挂载该数据库。更新或停止 Harness Compose 项目不会更新、重启或删除上述四个已有服务及其数据。它们的配置仍由[检索部署指南](../../../packages/experimental/environment-policy/deploy/README.zh.md)维护。
-
 ```text
-Browser → Harness container → policy API container → candidate recall / fusion → SQLite source evidence
-                  │                    └→ lexical indexes + embedding / Chroma semantic indexes
-                  └→ Qwen generation container → cited answer
+Browser → Harness container (Agent, policy_search, policy_read, BM25, fusion)
+                  ├─ /policy-data → Host SQLite and legacy-vector mapping (read-only)
+                  ├─ Chroma container
+                  ├─ Embedding model container
+                  └─ Answer model container
 ```
+
+Harness 镜像不包含业务数据、模型权重和凭据。旧检索 API 可继续供旧客户端使用，新预设不调用它。SQLite 不暴露 SQL 服务端口。仅更新 Harness 不会更新 Chroma 或模型。
 
 ## 数据库可视化
 
-无论 Harness 在 DGX 还是本地运行，数据库浏览页面都只在 DGX 部署一套。可选的独立 Compose 项目提供 Datasette 和 ChromaDB UI，通过同一份独立登录配置访问；SQLite 只读挂载，Chroma 写入由网关拦截。配置、端口与验证见[可视化部署指南](../../../deploy/db-viewers/README.zh.md)。
+数据库可视化仍使用 [DGX 独立浏览组件](../../../deploy/db-viewers/README.zh.md)。切换 SQLite 后，维护者须将可视化只读挂载指向同一份新快照。
 
 ## 准备服务器
 
-使用安装了 Docker Engine 和 Compose 插件的 ARM64 Linux DGX，预留源码构建磁盘空间，并确保能访问 Node 镜像、Debian 软件源和 npm registry。Harness 容器使用 CPU，不申请 GPU。已有容器应已运行，并加入外部 `policy-retrieval` 网络。
+服务器需要 Docker Engine、Compose、ARM64 Node 构建环境和外部 `policy-retrieval` 网络。Harness 使用 CPU。Chroma、Embedding、问答模型须已在该网络运行。不要复制 Windows node_modules 或私有启动配置到 Linux。
 
-在仓库根目录创建私有状态和凭据目录。UID/GID 1000 应与容器内的 `node` 用户一致；下面的命令复制两个已有凭据，不修改原文件。
+复制 `deploy/dgx/.env.example` 为私有 `.env`，设置发布 IP、`HARNESS_TRUSTED_HOSTS`、UID 1000 可写的状态和工作区目录，以及 UID 1000 可读的模型密钥文件 `QWEN_API_KEY_FILE`。不再需要旧政策 API 的密钥。
 
-```bash
-cp deploy/dgx/.env.example deploy/dgx/.env
-sudo install -d -o 1000 -g 1000 -m 700 /srv/e-agent/harness-state /srv/e-agent/harness-workspace /srv/e-agent/harness-secrets
-sudo install -o 1000 -g 1000 -m 400 /srv/e-agent/policy-api/.secrets/policy-token /srv/e-agent/harness-secrets/policy-token
-sudo install -o 1000 -g 1000 -m 400 /home/health/vllm/qwen38/.secrets/qwen38-api-key /srv/e-agent/harness-secrets/qwen-api-key
-docker network inspect policy-retrieval
-```
+`POLICY_V2_DATA_DIR` 指向单独发布的数据目录，包含 `POLICY_V2_DB_FILE`（默认 `policy-v2-national.sqlite`）和 `POLICY_V2_COMPATIBILITY_FILE`（默认 `policy-v2-documents.compat.json`）。两者由同一次离线导入生成，必须一起发布；不能把旧 v1 SQLite 改名代替。只有宿主机目录被挂载，文件不进入镜像或 Git。建库见 [插件说明](../../../packages/experimental/environment-policy/README.zh.md)。本地原文路径仅供溯源，线上读取直接使用 SQLite 全文，不需要 Windows 路径可访问。
 
-按目标机器修改 `deploy/dgx/.env`。`HARNESS_BIND_ADDRESS` 是宿主机内网 IP；`HARNESS_TRUSTED_HOSTS` 是逗号分隔的浏览器访问地址，包含发布端口，例如 `172.27.153.44:3080`。使用反向代理时，加入代理的访问地址。默认内部服务地址使用 Docker 容器名和内部端口，而不是宿主机发布的端口。凭据变量只填写宿主机文件路径，不把密钥贴入该文件或 YAML。`.env`、状态、工作区和凭据目录均被 Git 忽略，并排除在构建上下文之外。启动时生成 `/state/dsh/deployment/dgx.patch.yml`，其中模型端点是普通字符串，只保存凭据引用；部署参数应在 `.env` 或源码模板中修改，因为生成的配置会在重启时覆盖。
-
-当前 DGX 示例使用检索 API `http://e-agent-policy-api:8080` 和模型 API `http://vllm-qwen38-27b:8000/v1`。Docker 网络、服务名称或部署目录不同时，需相应修改 `.env`。不要把 Windows 的 `.dsh-build` 配置或 Windows `node_modules` 复制到服务器。
+配置 `POLICY_EMBEDDING_URL`、`POLICY_CHROMA_URL`、`POLICY_EMBEDDING_MODEL`、`POLICY_DOCUMENT_COLLECTION` 和 `POLICY_PASSAGE_COLLECTION`。默认 URL 使用 Docker 名称和内部端口。集合名称必须来自已存在的国家级索引，向量命中须通过构建版本和原文映射校验。`POLICY_SEMANTIC_TIMEOUT_MS` 默认 5000。启动时把配置写到私有状态目录，不写业务数据目录。
 
 ## 构建和启动
-
-在 `deploy/dgx` 执行以下命令。镜像安装锁定的 Linux 依赖，构建应用和原生辅助程序，再通过受支持的 `dsh web` profile 启动；不下载或启动数据库及模型。
-
-构建上下文包含 Host 类型检查所需的快照辅助模块及其类型声明，以及镜像启动测试使用的 Vitest 配置；录制的会话数据仍被排除。修改 `.dockerignore` 时应保留这些构建输入。
-
-应用文件系统保持只读。原生模块加载器和子进程辅助程序需要加载或执行临时文件，因此 `/tmp` 的 tmpfs 允许执行；沿用 Docker 对该挂载默认设置的 `noexec` 会导致启动失败。Compose 配置应保留 `/tmp:exec,mode=1777`。
 
 ```bash
 cd deploy/dgx
@@ -64,36 +42,24 @@ docker compose ps
 docker compose logs --tail 30 harness
 ```
 
-启动日志打印带当前进程认证信息的地址。内网直连时，保留该地址的 token，使用 `http://<HARNESS_BIND_ADDRESS>:<HARNESS_PORT>/?token=...`；不要公开分享日志或带令牌的链接。Docker 专用配置监听容器网络接口，Compose 仅向选定的宿主机 IP 发布端口。Host/Origin 校验和进程令牌仍启用，该配置不改变 CLI 默认只监听本机的行为。跨不可信网络时使用 HTTPS 或 SSH 隧道。
+应用文件系统和数据挂载保持只读；`/tmp:exec,mode=1777` 供原生辅助程序使用。启动先检查数据与密钥文件可读，再生成部署配置并通过 `dsh web` profile 启动。网页健康检查验证监听，不替代一次真实政策问答。
 
-首次打开页面时，添加 `/workspace` 为工作区。新会话预设为**环境政策法规问答**，默认模型为 **Qwen3.8-27B（DGX NVFP4）**，模型 ID 为 `qwen3.8-27b`，上下文 32768，最大输出 2048，关闭思考。日期上下文已启用，用于查询当前效力状态。已保存的设置及已有会话可以保留自己的模型选择。同一实例的所有使用者共享会话、设置和工作区，不提供多租户隔离。
+首次打开终端日志中的认证链接，使用所配置的发布地址和端口；认证信息仅私下传递。新建会话选择“环境政策法规问答”。默认 DGX 模型 `qwen3.8-27b`，上下文 32768、最大输出 2048、关闭思考。已有会话可能保留旧预设；同一实例共享会话和工作区，不提供多租户隔离。
 
 ## 重启、更新和回滚
 
-在 `deploy/dgx` 使用以下命令。`restart` 复用当前镜像，源码变化后才需要重建。更新前记录当前镜像 ID，并保留旧镜像。Harness 状态和工作区应与检索数据库、Chroma 索引分别备份。
-
-```bash
-docker compose restart harness
-docker compose images
-export HARNESS_SOURCE_REVISION="$(git rev-parse HEAD)"
-docker compose build
-docker compose up -d --wait --no-deps harness
-```
-
-回滚应用代码时，在 `.env` 中将 `HARNESS_IMAGE` 设为保留的旧镜像标签，再执行 `docker compose up -d --no-build --wait harness`。应用版本改变持久化格式时，应恢复兼容的状态备份。`docker compose stop harness` 只停止当前 Harness，不停止检索或模型 Compose 项目。Harness 升级不应伴随数据库重置或向量重建。
+配置和数据未变化时运行 `docker compose restart harness`。代码更新后重建镜像，再 `docker compose up -d --wait --no-deps harness`。保留旧镜像和旧数据目录；切换数据时同时切换 SQLite 与映射目录。回滚须恢复兼容的镜像、数据目录和状态备份。禁止用自动重建向量或重置数据库代替版本切换。
 
 ## 验证和排查
 
-分别检查页面、一次政策查询，以及已有检索和模型服务。容器健康检查要求未认证的首页请求返回 HTTP 401，在保留浏览器认证的同时验证 Web 监听，但不代表下游服务或模型凭据一定可用。镜像冒烟测试使用临时启动令牌换取浏览器 Cookie，并验证认证后的页面返回 HTTP 200。
+验证一条指定条号查询、一个主题问题，以及一个两页以上的全文读取。`policy_read` 必须连续读取到 `has_more=false`。只看到网页正常或 BM25 命中，不代表向量和模型正常。
 
-| 现象 | 检查项 |
+| 现象 | 检查 |
 | --- | --- |
-| 镜像构建失败 | Node 镜像、Debian/npm 连通性、锁定的包管理器和 ARM64 原生构建输出 |
-| 容器启动前退出 | 凭据文件非空、UID 1000 可读，以及 `HARNESS_TRUSTED_HOSTS` |
-| 浏览器连接被拒绝 | 发布 IP/端口、准确的 Host/Origin 地址，以及当前进程令牌 |
-| 检索或模型 HTTP 401 | 两个独立凭据文件及对应上游凭据 |
-| 检索不可用 | 已有检索 API 健康状态及 `policy-retrieval` 网络成员关系 |
-| 模型不可用 | 已有 Qwen 健康状态、服务模型名，以及带 `/v1` 的基地址 |
-| 无法保存状态 | 宿主机目录应已存在，且 UID 1000 可写 |
+| 容器启动即退出 | 两个数据文件存在且 UID 1000 可读；模型密钥非空；浏览器 Host 已配置 |
+| 找不到新工具 | 新建会话、检查预设和镜像版本，不能沿用旧 remote-service 配置 |
+| 语义检索降级 | Chroma/Embedding 网络、模型名、集合名、构建 ID 与原文哈希映射 |
+| 模型失败 | Qwen 健康状态、模型名、密钥和带 `/v1` 的地址 |
+| 网页无法连接 | 发布 IP/端口、Host/Origin 与当前进程认证链接 |
 
-可选预设也可用于本地源码工作区：设置私有的 `DSH_HOME`，提供 `DGX_POLICY_API_URL`、`DGX_POLICY_API_TOKEN_FILE`、`DGX_QWEN_API_BASE_URL` 和凭据 `DGX_QWEN38_API_KEY`，再运行 `node deploy/dgx/prepare-config.mjs`。启动命令为 `pnpm dsh web --patch <DSH_HOME>/deployment/dgx.patch.yml --no-open`，将占位符替换为实际目录。不要叠加 Docker 专用的 `web.patch.yml`，本地模式保留正常的本机监听。语料准备和检索诊断仍见[检索部署指南](../../../packages/experimental/environment-policy/deploy/README.zh.md)。
+源码回归包括插件测试、部署配置测试和构建后 Web profile 检查；ARM64 镜像构建与独立数据夹具启动由 GitHub CI 执行。合并后需由维护者更新 DGX，不会自动部署。旧 API 维护说明保留在 [旧部署指南](../../../packages/experimental/environment-policy/deploy/README.zh.md)。

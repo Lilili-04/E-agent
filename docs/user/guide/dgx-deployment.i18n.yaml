@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/guide/dgx-deployment.md
 /run-the-environment-policy-harness-on-dgx:
-  en: 24a0b842f91e6dc5
-  zh: a098bc0e170ef7a3
+  en: b4f0bf627af1e094
+  zh: 85b7952851211993
 /run-the-environment-policy-harness-on-dgx/deployment-layout:
-  en: dd6efa4abcdeb1b1
-  zh: 4e6e372c3b58a963
+  en: ec695222503b9bce
+  zh: fae516d3095a9b70
 /run-the-environment-policy-harness-on-dgx/database-viewers:
-  en: 1603ad45f4b808a5
-  zh: 46148ba5c7c69914
+  en: 6cd425987aa32ca2
+  zh: 9c41d29d3205567a
 /run-the-environment-policy-harness-on-dgx/prepare-the-server:
-  en: 472b04ad08d99179
-  zh: d9d576645ed5021c
+  en: ad8c4b6bf29e07fe
+  zh: a8fdd7a2f2ecf89c
 /run-the-environment-policy-harness-on-dgx/build-and-start:
-  en: 8164480b3e0ba621
-  zh: 2d3a40b9b6bba23b
+  en: 085b5f3c9f91770c
+  zh: 11c8cbffb97432aa
 /run-the-environment-policy-harness-on-dgx/restart-update-and-rollback:
-  en: 935e6753bf734180
-  zh: adcb324836153695
+  en: 26eeb135cb74ab2f
+  zh: c4746199119a2dd4
 /run-the-environment-policy-harness-on-dgx/verify-and-troubleshoot:
-  en: 326debec4ca1984b
-  zh: 8d54168bd0fa5fae
+  en: 74ba742d768711be
+  zh: 45c73968015e20af
