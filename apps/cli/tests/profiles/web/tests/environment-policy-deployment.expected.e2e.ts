@@ -32,7 +32,7 @@ it('boots the policy preset, Qwen route and clock before preset-local data is op
         vi.stubEnv('POLICY_V2_DB_PATH', join(root, 'policy-v2.sqlite'))
         vi.stubEnv('POLICY_V2_COMPATIBILITY_PATH', token)
         vi.stubEnv('POLICY_V2_SEMANTIC_CONFIG_PATH', token)
-        vi.stubEnv('DGX_QWEN38_API_KEY', 'keyless-deployment-no-model-call')
+        vi.stubEnv('DGX_QWEN36_API_KEY', 'keyless-deployment-no-model-call')
       },
     })
   } finally {

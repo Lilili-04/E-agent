@@ -35,6 +35,14 @@
     "./v2-tools": {
       "types": "./lib/types/v2-tools.d.ts",
       "default": "./lib/v2-tools.js"
+    },
+    "./v2-remote-service": {
+      "types": "./lib/types/v2-remote-service.d.ts",
+      "default": "./lib/v2-remote-service.js"
+    },
+    "./v2-http": {
+      "types": "./lib/types/v2-http.d.ts",
+      "default": "./lib/v2-http.js"
     }
   },
   "files": [

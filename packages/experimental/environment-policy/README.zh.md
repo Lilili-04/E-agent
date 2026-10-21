@@ -34,6 +34,8 @@ kind: "package-reference"
 
 `policy_read` 接收 `document_id`、`scope`（`full`、`section`、`article`）、章节/条款的精确 `selector` 和可选 `cursor`。须用 `next_cursor` 继续读到 `has_more=false`。超长单元跨页时标记 `unit_fragments=true`；条款不存在时返回 `found=false`。`source_complete` 描述导入的原文完整性，不代表法律效力。搜索片段标记 `excerpted` 时须继续读取。每个 Agent 的每轮对话独立检查未完成的全文读取，提醒达到配置上限后以错误停止；该检查不能验证模型的理解，超过上下文窗口的长文件仍依赖压缩。
 
+本地 Harness、政策数据全部留在 DGX 时，挂载 `./v2-remote-service`，配置 `endpoint`、`tokenFile` 和可选 `timeoutMs`/`maxResponseBytes`，继续使用同一套 `./v2-tools`。客户端不打开 SQLite，也不回退本地库。DGX 的 `./v2-http` 注入本地 v2 服务，提供鉴权的 `GET /v2/policy/status`、`POST /v2/policy/search` 和 `POST /v2/policy/read`；search/read 请求体使用工具参数字段。两端均需私有 token 文件，至少 32 字符。监听默认 loopback 18081、请求上限 32 KiB、期限 15 秒。无效请求返回 400，缺少凭据 401，正文过大 413；客户端支持取消与响应大小限制。部署与本地启动配置见 [DGX 指南](../../../docs/user/guide/dgx-deployment.zh.md)。
+
 -----
 
 <a id="use-this-package"></a>

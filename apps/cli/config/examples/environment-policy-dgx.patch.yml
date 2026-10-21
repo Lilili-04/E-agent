@@ -43,11 +43,11 @@
 - id: llm-pi-ai
   config:
     providers:
-      dgx-qwen38:
-        displayName: DGX Qwen3.8
-        apiKeyEnv: DGX_QWEN38_API_KEY
+      dgx-qwen36:
+        displayName: DGX Qwen3.6
+        apiKeyEnv: DGX_QWEN36_API_KEY
         api: openai-completions
-        baseURL: http://vllm-qwen38-27b:8000/v1
+        baseURL: http://vllm-qwen36:8000/v1
         timeoutMs: 180000
         streamIdleTimeoutMs: 60000
         retryPolicy:
@@ -62,17 +62,17 @@
           chatTemplateKwargs:
             enable_thinking: false
         models:
-          - id: qwen3.8-27b
-            name: Qwen3.8-27B（DGX NVFP4）
-            contextWindow: 32768
+          - id: qwen3.6-35b-a3b-vllm
+            name: Qwen3.6-35B-A3B（DGX NVFP4）
+            contextWindow: 196608
             maxTokens: 2048
             input: [text]
             reasoningEfforts: false
 
 - id: agent-default-model
   config:
-    provider: dgx-qwen38
-    model: qwen3.8-27b
+    provider: dgx-qwen36
+    model: qwen3.6-35b-a3b-vllm
 
 - id: time-context
   disabled: false

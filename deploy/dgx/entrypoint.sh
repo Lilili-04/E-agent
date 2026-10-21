@@ -17,12 +17,12 @@ if [ ! -r "$DGX_QWEN_API_KEY_FILE" ] || [ ! -s "$DGX_QWEN_API_KEY_FILE" ]; then
     echo 'Harness: model API key file is missing, empty, or unreadable.' >&2
     exit 1
 fi
-DGX_QWEN38_API_KEY="$(cat "$DGX_QWEN_API_KEY_FILE")"
-if [ -z "$DGX_QWEN38_API_KEY" ]; then
+DGX_QWEN36_API_KEY="$(cat "$DGX_QWEN_API_KEY_FILE")"
+if [ -z "$DGX_QWEN36_API_KEY" ]; then
     echo 'Harness: model API key is empty.' >&2
     exit 1
 fi
-export DGX_QWEN38_API_KEY
+export DGX_QWEN36_API_KEY
 
 node /app/deploy/dgx/prepare-config.mjs
 

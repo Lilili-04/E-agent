@@ -1,0 +1,83 @@
+# Local Harness with remote DGX v2 retrieval and Qwen3.6. Secrets stay outside Git.
+- id: agent-preset-registry
+  config:
+    default: environment-policy
+
+- insert:
+    - id: preset-environment-policy
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: environment-policy
+        name: 环境政策法规问答
+        description: 检索 DGX 环境政策法规库，依据原文回答条款、主题、发布日期、效力状态和版本问题，并列出来源。
+        order: 0
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 你是环境政策法规问答助手。
+              suffix: >-
+                回答环境政策、法规、污染治理、生态保护或生产建设合规问题前，必须先调用 policy_search，并以返回的原文为依据。
+                question 保留用户原问题。整部法规概括先找文件，再调用 policy_read，并用 next_cursor 顺序读取到 has_more=false。
+                确认文件是否收录正文时，核对结果中的文件标题；其他文件仅引用该名称，不代表库中收录了其正文，不得据此编造条款。
+                来源只使用证据提供的文号和日期；缺失或只有孤立数字时省略，不得补造。
+          - id: environment-policy
+            name: cordis:group
+            group: true
+            isolate:
+              environmentPolicyV2: true
+            config:
+              - id: environment-policy-v2-remote
+                name: '@deepseek-ai/dsh-experimental-environment-policy/v2-remote-service'
+                config:
+                  endpoint: !!js "process.env.DGX_POLICY_V2_URL ?? 'http://172.27.153.44:18081'"
+                  tokenFile: !!js process.env.POLICY_V2_API_TOKEN_FILE
+                  timeoutMs: 15000
+              - id: tool-environment-policy
+                name: '@deepseek-ai/dsh-experimental-environment-policy/v2-tools'
+                config:
+                  maxReadReminders: 3
+
+- id: llm-pi-ai
+  config:
+    providers:
+      dgx-qwen36:
+        displayName: DGX Qwen3.6
+        apiKeyEnv: DGX_QWEN36_API_KEY
+        api: openai-completions
+        baseURL: http://172.27.153.44:8001/v1
+        timeoutMs: 180000
+        streamIdleTimeoutMs: 60000
+        retryPolicy:
+          mode: normal
+          maxRetries: 1
+        compat:
+          supportsStore: false
+          supportsDeveloperRole: false
+          supportsReasoningEffort: false
+          supportsUsageInStreaming: true
+          maxTokensField: max_tokens
+          chatTemplateKwargs:
+            enable_thinking: false
+        models:
+          - id: qwen3.6-35b-a3b-vllm
+            name: Qwen3.6-35B-A3B（DGX NVFP4）
+            contextWindow: 196608
+            maxTokens: 2048
+            input: [text]
+            reasoningEfforts: false
+
+- id: agent-default-model
+  config:
+    provider: dgx-qwen36
+    model: qwen3.6-35b-a3b-vllm
+
+- id: time-context
+  disabled: false
+  config:
+    timeZone: Asia/Shanghai
+
+- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 3080

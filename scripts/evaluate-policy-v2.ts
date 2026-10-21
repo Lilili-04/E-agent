@@ -9,6 +9,8 @@ if (!database || !output) throw new Error('Usage: evaluate-policy-v2.ts database
 const ctx = new Context()
 try {
   await ctx.plugin(PolicyV2Service, { path: database, ...(semanticConfigPath ? { semanticConfigPath, compatibilityPath } : {}) })
+  const provider = ctx.environmentPolicyV2
+  if (!(provider instanceof PolicyV2Service)) throw new Error('Evaluation requires the local SQLite provider')
   const questions = [
     '中华人民共和国水土保持法第二十六条是什么？',
     '水土保持法讲了什么',
@@ -23,18 +25,18 @@ try {
   ]
   const results = []
   for (const question of questions) {
-    const result = await ctx.environmentPolicyV2.search({ question })
+    const result = await provider.search({ question })
     const reads = []
     const doc = result.documents[0]
     if (result.requires_full_read && result.documents.length === 1 && doc) {
-      let page = ctx.environmentPolicyV2.read({ document_id: doc.id })
+      let page = provider.read({ document_id: doc.id })
       let text = page.text; let pages = 1
       while (page.has_more) {
         if (!page.next_cursor) throw new Error('Incomplete read has no continuation cursor')
-        page = ctx.environmentPolicyV2.read({ document_id: doc.id, cursor: page.next_cursor })
+        page = provider.read({ document_id: doc.id, cursor: page.next_cursor })
         text += page.text; pages++
       }
-      const path = ctx.environmentPolicyV2.database.sql.prepare('SELECT markdown_path FROM documents WHERE id=?').get(doc.id)?.markdown_path
+      const path = provider.database.sql.prepare('SELECT markdown_path FROM documents WHERE id=?').get(doc.id)?.markdown_path
       reads.push({ document: doc.title, pages, characters: text.length,
         exact_source_match: typeof path === 'string' && readFileSync(path, 'utf8').replace(/^\uFEFF/u, '') === text })
     }

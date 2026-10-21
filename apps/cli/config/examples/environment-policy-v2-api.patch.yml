@@ -1,0 +1,16 @@
+# Optional DGX listener; compose publishes this port only to the private DGX address.
+- insert:
+    - id: policy-v2-api-data
+      name: '@deepseek-ai/dsh-experimental-environment-policy/v2-service'
+      config:
+        path: !!js process.env.POLICY_V2_DB_PATH
+        semanticConfigPath: !!js process.env.POLICY_V2_SEMANTIC_CONFIG_PATH
+        compatibilityPath: !!js process.env.POLICY_V2_COMPATIBILITY_PATH
+        pageCharacters: 10000
+        evidenceCharacters: 12000
+    - id: policy-v2-api
+      name: '@deepseek-ai/dsh-experimental-environment-policy/v2-http'
+      config:
+        host: 0.0.0.0
+        port: 18081
+        tokenFile: !!js process.env.POLICY_V2_API_TOKEN_FILE
