@@ -12,7 +12,7 @@ test('writes a private endpoint configuration without putting credentials into Y
   const home = await mkdtemp(join(tmpdir(), 'e-agent-config-'))
   try {
     const result = spawnSync(process.execPath, [script], {
-      env: { DSH_HOME: home, DGX_QWEN_API_BASE_URL: 'http://127.0.0.1:18001/v1', DGX_QWEN38_API_KEY: 'keyless-do-not-persist',
+      env: { DSH_HOME: home, DGX_QWEN_API_BASE_URL: 'http://127.0.0.1:18001/v1', DGX_QWEN36_API_KEY: 'keyless-do-not-persist',
         POLICY_DOCUMENT_COLLECTION: 'national-documents', POLICY_PASSAGE_COLLECTION: 'national-passages' },
       encoding: 'utf8', timeout: 10000,
     })
@@ -21,7 +21,11 @@ test('writes a private endpoint configuration without putting credentials into Y
     assert.equal(result.status, 0, result.stderr)
     const config = await readFile(join(home, 'deployment/dgx.patch.yml'), 'utf8')
     assert.match(config, /baseURL: "http:\/\/127\.0\.0\.1:18001\/v1"/u)
-    assert.match(config, /apiKeyEnv: DGX_QWEN38_API_KEY/u)
+    assert.match(config, /apiKeyEnv: DGX_QWEN36_API_KEY/u)
+    assert.match(config, /provider: dgx-qwen36/u)
+    assert.match(config, /model: qwen3\.6-35b-a3b-vllm/u)
+    assert.match(config, /contextWindow: 196608/u)
+    assert.doesNotMatch(config, /qwen38|qwen3\.8/u)
     assert.doesNotMatch(config + result.stdout + result.stderr, /keyless-do-not-persist/u)
     const semantic = JSON.parse(await readFile(join(home, 'deployment/policy-semantic.json'), 'utf8'))
     assert.equal(semantic.documentCollection, 'national-documents')

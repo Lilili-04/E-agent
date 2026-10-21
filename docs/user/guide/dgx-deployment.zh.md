@@ -44,7 +44,26 @@ docker compose logs --tail 30 harness
 
 应用文件系统和数据挂载保持只读；`/tmp:exec,mode=1777` 供原生辅助程序使用。启动先检查数据与密钥文件可读，再生成部署配置并通过 `dsh web` profile 启动。网页健康检查验证监听，不替代一次真实政策问答。
 
-首次打开终端日志中的认证链接，使用所配置的发布地址和端口；认证信息仅私下传递。新建会话选择“环境政策法规问答”。默认 DGX 模型 `qwen3.8-27b`，上下文 32768、最大输出 2048、关闭思考。已有会话可能保留旧预设；同一实例共享会话和工作区，不提供多租户隔离。
+首次打开终端日志中的认证链接，使用所配置的发布地址和端口；认证信息仅私下传递。新建会话选择“环境政策法规问答”。默认 DGX 模型 `qwen3.6-35b-a3b-vllm`，上下文 196608、最大输出 2048、关闭思考。已有会话可能保留旧预设；同一实例共享会话和工作区，不提供多租户隔离。
+
+## 本地 Harness 连接 DGX 数据
+
+本地[远程预设](../../../apps/cli/config/examples/environment-policy-remote-dgx.patch.yml)使用 Qwen3.6 和 v2 HTTP search/read。SQLite、向量与检索均在 DGX 执行，本地保留会话和网页应用，不需要 SQLite 快照。旧 18080 API 不兼容 v2 分页。
+
+构建更新镜像后，启用可选 [API 覆盖配置](../../../deploy/dgx/docker-compose.policy-api.yml)。`POLICY_V2_API_TOKEN_FILE` 指向 UID 1000 可读的私有 token 文件，至少包含 32 个随机字符；通过安全渠道将相同内容传至本地 `.dsh-build/dgx-policy-v2.token`。18081 仅发布到 DGX 内网地址。应用覆盖配置时保留已有 Compose 模型覆盖文件，重建 Harness 前检查合并配置，确保 Qwen3.6 模型覆盖继续生效。
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.policy-api.yml config --quiet
+docker compose -f docker-compose.yml -f docker-compose.policy-api.yml up -d --wait --no-deps harness
+```
+
+以上命令对应全新安装；已有 `docker-compose.override.yml` 时，必须在 API 覆盖文件之前用 `-f` 一并指定。已有覆盖命令中若还包含模型 patch，须保留它，并把 API patch 放在模型 patch 之后。API 使用与网页检索相同的数据库挂载和语义配置。
+
+Windows 本地将模型密钥私下保存到 `.dsh-build/qwen-api.key`。依赖与包构建准备好后，从仓库根目录执行以下命令。启动先检查 v2 鉴权状态和 Qwen3.6 模型，再在 `127.0.0.1:3080` 运行本地 Web profile；使用本次启动的认证链接。脚本不会终止已有监听进程。新会话使用远程 v2 预设，旧会话可能保留之前的模型选择。
+
+```powershell
+./deploy/local/start-policy-web.ps1
+```
 
 ## 重启、更新和回滚
 

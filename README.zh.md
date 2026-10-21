@@ -56,9 +56,9 @@ Jieba 用于正文与问题分词，SQLite FTS5 原生 BM25 排序，候选融�
 | 方式 | Harness / SQLite | 向量与模型 |
 | --- | --- | --- |
 | A．DGX 网页应用 | Harness 容器＋DGX 宿主机只读挂载 SQLite | DGX 独立容器 |
-| B．本地开发验证 | 本地 Harness＋同版本 SQLite 快照 | 调用 DGX；内部端口可用 SSH 隧道 |
+| B．本地网页应用 | 本地 Harness；通过 v2 API 读取 DGX SQLite | DGX 独立容器 |
 
-A 的部署入口见 [DGX 指南](docs/user/guide/dgx-deployment.zh.md)。B 是新版检索的开发验证组合，需要额外取得 SQLite 与匹配映射文件。旧的“本地 Harness＋远程检索 API”配置仍调用旧版工具，不能用来验证本次 `policy_read` 链路。
+A 的部署入口见 [DGX 指南](docs/user/guide/dgx-deployment.zh.md)。B 使用同一指南中的 v2 API 和本地启动配置，支持远程 `policy_read` 分页，不需要本地 SQLite；旧 18080 API 仅保留兼容。离线开发仍可使用同版本 SQLite 快照。
 
 <a id="run"></a>
 

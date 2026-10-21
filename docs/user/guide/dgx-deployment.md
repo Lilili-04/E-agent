@@ -44,7 +44,26 @@ docker compose logs --tail 30 harness
 
 Application and data mounts stay read-only; `/tmp:exec,mode=1777` supports native helpers. Startup checks readable data/secret files, generates configuration, then launches through the `dsh web` profile. Listener health is not a substitute for a real policy question.
 
-Open the authenticated URL from startup logs using the configured published address and port; share authentication privately. Start a new chat with “环境政策法规问答”. The default DGX model is `qwen3.8-27b`, context 32768, maximum output 2048, thinking disabled. Existing chats may retain an old preset; one instance shares sessions/workspaces and has no multi-tenant isolation.
+Open the authenticated URL from startup logs using the configured published address and port; share authentication privately. Start a new chat with “环境政策法规问答”. The default DGX model is `qwen3.6-35b-a3b-vllm`, context 196608, maximum output 2048, thinking disabled. Existing chats may retain an old preset; one instance shares sessions/workspaces and has no multi-tenant isolation.
+
+## Local Harness with DGX data
+
+The local [remote preset](../../../apps/cli/config/examples/environment-policy-remote-dgx.patch.yml) uses Qwen3.6 and v2 HTTP search/read. SQLite, vectors and retrieval execute on DGX; local sessions and the Web application stay on the PC. The client requires no SQLite snapshot. The old port 18080 API is incompatible with v2 pagination.
+
+After building the updated image, enable the optional [API overlay](../../../deploy/dgx/docker-compose.policy-api.yml). Set `POLICY_V2_API_TOKEN_FILE` to a private token file readable by UID 1000, containing at least 32 random characters; transfer its contents securely to the local `.dsh-build/dgx-policy-v2.token`. Publish port 18081 only on the private DGX address. Include existing Compose model overrides when applying the overlay; inspect the merged configuration before recreating Harness. Existing Qwen3.6 model overrides must remain in effect.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.policy-api.yml config --quiet
+docker compose -f docker-compose.yml -f docker-compose.policy-api.yml up -d --wait --no-deps harness
+```
+
+These commands show a fresh installation; an existing `docker-compose.override.yml` must also be supplied with `-f` before the API overlay. Do not remove a model patch from an existing overridden command; keep the API patch after the model patch. The API uses the same mounted database and semantic configuration as Web retrieval.
+
+On Windows, save the model key privately in `.dsh-build/qwen-api.key`. From the repository root, run the following with dependencies and package builds prepared. Startup checks the authenticated v2 status and served Qwen3.6 model before starting the local Web profile on `127.0.0.1:3080`; use its current authenticated startup URL. It does not terminate an existing listener. New chats use the remote v2 preset; existing chats can retain prior model selections.
+
+```powershell
+./deploy/local/start-policy-web.ps1
+```
 
 ## Restart, update, and rollback
 

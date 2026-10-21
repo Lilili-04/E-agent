@@ -48,8 +48,24 @@ export interface PolicyV2SearchResult {
   }
 }
 
+/** Source retrieval capability implemented by local SQLite and remote HTTP providers. */
+export interface PolicyV2Knowledge {
+  /** Retrieve candidates.
+   * @param request - Original query and optional scope.
+   * @param signal - Caller cancellation.
+   * @returns Source-backed candidates.
+   */
+  search(request: PolicyV2SearchRequest, signal?: AbortSignal): Promise<PolicyV2SearchResult>
+  /** Read one consecutive original page.
+   * @param request - Fixed version, range and continuation.
+   * @param signal - Caller cancellation.
+   * @returns Original source page, synchronously or over HTTP.
+   */
+  read(request: PolicyV2ReadRequest, signal?: AbortSignal): PolicyV2ReadResult | Promise<PolicyV2ReadResult>
+}
+
 declare module '@deepseek-ai/cordis' {
-  interface Context { environmentPolicyV2: PolicyV2Service }
+  interface Context { environmentPolicyV2: PolicyV2Knowledge }
 }
 
 /** A provider scoped to one preset; no database writes occur during questions. */
@@ -64,7 +80,7 @@ export default class PolicyV2Service extends Service {
     super(ctx, 'environmentPolicyV2')
     if (!!config.semanticConfigPath !== !!config.compatibilityPath) throw new Error('Provide semanticConfigPath and compatibilityPath together')
     this.database = new PolicyV2Database(config.path)
-    ctx.effect(() => () => this.database.close(), 'policyV2.close')
+    ctx.effect(() => () => { this.database.close() }, 'policyV2.close')
     this.settings = { candidateLimit: config.candidateLimit ?? 60, resultLimit: config.resultLimit ?? 8,
       pageCharacters: config.pageCharacters ?? 12000, evidenceCharacters: config.evidenceCharacters ?? 12000 }
     if (config.semanticConfigPath && config.compatibilityPath) {

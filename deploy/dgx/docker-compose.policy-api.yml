@@ -1,0 +1,22 @@
+# Add explicitly with -f, preserving any existing model override files.
+services:
+  harness:
+    ports:
+      - "${HARNESS_BIND_ADDRESS:?set HARNESS_BIND_ADDRESS}:${POLICY_V2_API_PORT:-18081}:18081"
+    environment:
+      POLICY_V2_API_TOKEN_FILE: /run/secrets/policy_v2_api_token
+    secrets:
+      - policy_v2_api_token
+    command:
+      - web
+      - --patch
+      - /state/dsh/deployment/dgx.patch.yml
+      - --patch
+      - /app/deploy/dgx/web.patch.yml
+      - --patch
+      - /app/apps/cli/config/examples/environment-policy-v2-api.patch.yml
+      - --no-open
+
+secrets:
+  policy_v2_api_token:
+    file: ${POLICY_V2_API_TOKEN_FILE:?set POLICY_V2_API_TOKEN_FILE to a private token file}

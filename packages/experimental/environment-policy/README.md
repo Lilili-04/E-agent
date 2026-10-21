@@ -34,6 +34,8 @@ Provider settings are `path`, optional `semanticConfigPath` plus `compatibilityP
 
 `policy_read` takes `document_id`, `scope` (`full`, `section`, `article`), exact `selector` for sections/articles and optional `cursor`. Continue with `next_cursor` until `has_more=false`. Oversized units span pages with `unit_fragments=true`; missing clauses return `found=false`. `source_complete` concerns the imported source, not legal validity. Search passages marked `excerpted` require further reading. A per-agent, per-turn completion check requests unfinished full reads and stops with an error after the configured reminder limit. It cannot verify model interpretation; documents exceeding the context window still depend on compaction.
 
+For a local Harness with all policy data on DGX, mount `./v2-remote-service` with `endpoint`, `tokenFile` and optional `timeoutMs`/`maxResponseBytes`, followed by the same `./v2-tools`. The client opens no SQLite and has no local fallback. On DGX, `./v2-http` injects the local v2 provider and serves authenticated `GET /v2/policy/status`, `POST /v2/policy/search` and `POST /v2/policy/read`; search/read bodies use the tool request fields. Both sides require a private token file containing at least 32 characters. The listener defaults to loopback port 18081, a 32 KiB request limit and a 15 second deadline. Invalid requests return 400, missing credentials 401 and oversized bodies 413. Client requests support cancellation and a bounded response body. The [DGX guide](../../../docs/user/guide/dgx-deployment.md) owns deployment and local launch configuration.
+
 -----
 
 <a id="use-this-package"></a>

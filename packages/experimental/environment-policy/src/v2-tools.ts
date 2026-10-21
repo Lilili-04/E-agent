@@ -112,7 +112,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       const current = state(exec.agent)
       const expected = current.pending.get(args.document_id)
       if ((args.scope ?? 'full') === 'full' && args.cursor && args.cursor !== expected) throw new Error('Read pages sequentially; begin without cursor')
-      const result = ctx.environmentPolicyV2.read(args)
+      const result = await ctx.environmentPolicyV2.read(args, exec.signal)
       if (result.scope === 'full') {
         if (result.has_more) {
           if (!result.next_cursor) throw new Error('Incomplete source read has no next cursor')

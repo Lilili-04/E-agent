@@ -56,9 +56,9 @@ Jieba segments both source and query, and native SQLite FTS5 BM25 ranks lexical 
 | Arrangement | Harness / SQLite | Vectors and models |
 | --- | --- | --- |
 | A. DGX Web application | Harness container with a read-only host SQLite mount | Separate DGX containers |
-| B. Local development | Local Harness and a matching SQLite snapshot | DGX services; SSH forwarding for internal ports |
+| B. Local Web application | Local Harness; DGX SQLite through the v2 API | DGX containers |
 
-See the [DGX guide](docs/user/guide/dgx-deployment.md) for A. B validates the new retrieval implementation and requires the snapshot and matching mapping file. Older local-Harness/remote-API settings still invoke the old tool and cannot validate the new `policy_read` flow.
+See the [DGX guide](docs/user/guide/dgx-deployment.md) for A. B uses the v2 API and local launch configuration in the same guide, supports remote `policy_read` pagination and requires no local SQLite. The old port 18080 API remains for compatibility. Offline development can still use a matching SQLite snapshot.
 
 <a id="run"></a>
 
