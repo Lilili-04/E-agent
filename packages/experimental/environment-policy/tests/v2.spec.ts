@@ -9,6 +9,7 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { ToolExecutionInput } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PolicyV2Database, type PolicyDocument } from '../src/v2-database.ts'
 import { sourceUnits } from '../src/v2-parser.ts'
@@ -111,6 +112,48 @@ describe('policy v2 source retrieval', () => {
       }
       expect(actual).toBe(original)
     } finally { db.close() }
+  })
+
+  it('keeps full-read cursors across repeated searches and bounds per-turn search loops', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'policy-v2-loop-')); roots.push(dir)
+    const path = join(dir, 'loop.sqlite')
+    PolicyV2Database.create(path, [doc('long-law', '长法规', `第一条${'法规正文。'.repeat(1200)}\n第二条最后一条。\n` )])
+    const configPath = join(dir, 'cordis.yml')
+    await writeFile(configPath, [
+      '- name: cordis:prompt', '- name: cordis:tools', '- name: cordis:policy',
+      `  config: { path: ${JSON.stringify(path)}, pageCharacters: 200 }`, '- name: cordis:policy-tools',
+      '  config: { maxSearchCalls: 2 }', '',
+    ].join('\n'))
+    const ctx = new Context()
+    try {
+      await ctx.plugin(Loader)
+      Object.assign(ctx.loader.builtins, { include: Include, prompt: SystemPrompt, tools: ToolRuntime, policy: PolicyV2Service, 'policy-tools': Tools })
+      await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
+      await ctx.loader.await()
+      const agent = {} as NonNullable<ToolExecutionInput['agent']>
+      const toolText = (value: unknown): string => {
+        if (typeof value !== 'string') throw new Error('Expected a string tool result')
+        return value
+      }
+      const execute = async (name: string, args: Record<string, unknown>, call: string) =>
+        ctx.tools.execute({ name, arguments: args, callId: ToolCallId(call), signal: new AbortController().signal, agent })
+      const search = await execute('policy_search', { question: '长法规讲了什么' }, 'loop-search-1')
+      if (search.isError) throw new Error('Initial search failed')
+      const searchData = JSON.parse(toolText(search.value)) as { documents: Array<{ id: string }>; requires_full_read: boolean }
+      expect(searchData.requires_full_read).toBe(true)
+      const first = await execute('policy_read', { document_id: 'long-law', scope: 'full', cursor: 'stale-from-prior-read' }, 'loop-read-1')
+      if (first.isError) throw new Error('Initial full read failed')
+      const firstData = JSON.parse(toolText(first.value)) as { has_more: boolean; next_cursor: string }
+      expect(firstData.has_more).toBe(true)
+      const repeatedSearch = await execute('policy_search', { question: '长法规讲了什么' }, 'loop-search-2')
+      expect(repeatedSearch.isError).toBe(false)
+      const nextPage = await execute('policy_read', { document_id: 'long-law', scope: 'full', cursor: firstData.next_cursor }, 'loop-read-2')
+      expect(nextPage.isError).toBe(false)
+      const cappedSearch = await execute('policy_search', { question: '长法规讲了什么' }, 'loop-search-3')
+      expect(cappedSearch.isError).toBe(false)
+      expect(toolText(cappedSearch.value)).toContain('search_limit_reached')
+      expect(toolText(cappedSearch.value)).toContain('不要继续重复检索')
+    } finally { await ctx.fiber.dispose() }
   })
 
   it('rejects vector hits from changed sources and reports collection version mismatches', async () => {
