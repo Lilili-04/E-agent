@@ -4,6 +4,8 @@ import { DatabaseSync } from 'node:sqlite'
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { articleKey, sourceUnits, type SourceUnit } from './v2-parser.ts'
 import { policyMatch, policyTerms } from './v2-tokenizer.ts'
+import { policyTitleMatches } from './v2-title-matches.ts'
+import type { GraphVersion } from './v2-graph.ts'
 
 /** One source-backed document version; summaries are discovery aids only. */
 export interface PolicyDocument {
@@ -32,11 +34,14 @@ export type DocumentCard = Omit<PolicyDocument, 'full_text' | 'pdf_path' | 'mark
 export interface Passage extends SourceUnit {
   document: DocumentCard
   excerpted?: boolean
+  /** Ordered original unit IDs when adjacent evidence is combined. */
+  unit_ids?: string[]
 }
 
 /** Original-text selection; paging never changes the selected version or scope. */
 export interface PolicyV2ReadRequest {
   document_id: string
+  version_id?: string
   scope?: 'full' | 'section' | 'article'
   selector?: string
   cursor?: string
@@ -53,6 +58,8 @@ export interface PolicyV2ReadResult {
   next_cursor: string | null
   source_complete: boolean
   unit_fragments: boolean
+  version?: GraphVersion
+  text_role?: 'body' | 'attachment' | 'history_evidence'
 }
 
 /** Exact normalization retains years, version labels and geographical qualifiers.
@@ -142,19 +149,16 @@ export class PolicyV2Database {
 
   /** Find exact title/identifier candidates without choosing a version by date alone.
    * @param query - Original question.
-   * @returns All matching versions of the longest explicit title.
+   * @returns All matching versions of independently named titles or identifiers.
    */
   exact(query: string): DocumentCard[] {
+    const titles = [...query.matchAll(/《([^》]+)》/gu)].flatMap(match => match[1] ? [match[1]] : [])
+    if (titles.length > 1) return [...new Set(titles.flatMap(title => this.exact(title)))]
     const normalized = canonical(query)
-    const scored = this.documents.map((doc) => {
-      const title = canonical(doc.title)
-      const alias = title.replace(/^中华人民共和国/u, '')
-      const matched = normalized.includes(title) ? title.length : alias.length >= 4 && normalized.includes(alias) ? alias.length : 0
-      const identifiers = [doc.document_number, doc.standard_number].filter((v): v is string => !!v)
-      return { doc, score: identifiers.some(value => normalized.includes(canonical(value))) ? 10000 : matched }
-    }).filter(item => item.score > 0)
-    const best = Math.max(...scored.map(item => item.score))
-    let result = scored.filter(item => item.score === best).map(item => item.doc)
+    const identified = this.documents.filter(doc => [doc.document_number, doc.standard_number]
+      .some(value => value && normalized.includes(canonical(value))))
+    let result = identified.length ? identified : policyTitleMatches(normalized, this.documents,
+      doc => [canonical(doc.title), canonical(doc.title).replace(/^中华人民共和国/u, '')])
     const year = query.match(/(?:19|20)\d{2}(?=年|版|修订|修正)/u)?.[0]
     if (year) result = result.filter(doc => doc.publish_date?.startsWith(year) || doc.title.includes(year))
     return result
@@ -163,15 +167,17 @@ export class PolicyV2Database {
   /** Rank title and description jointly with native FTS5 BM25.
    * @param query - User query.
    * @param limit - Candidate count after BM25 ranking.
-   * @param region - Explicit geographical filter.
+   * @param regions - Allowed catalog provinces, including national evidence when requested.
+   * @param ids - Allowed latest or explicitly selected document IDs.
    * @returns Ranked document cards.
    */
-  searchDocuments(query: string, limit: number, region?: string): DocumentCard[] {
+  searchDocuments(query: string, limit: number, regions?: readonly string[], ids?: readonly string[]): DocumentCard[] {
     const match = policyMatch(query)
-    if (!match) return []
+    if (!match || regions?.length === 0 || ids?.length === 0) return []
     const rows = this.sql.prepare(`SELECT d.id FROM documents_fts JOIN documents d ON d.rowid=documents_fts.rowid
-      WHERE documents_fts MATCH ? ${region ? 'AND d.region=?' : ''}
-      ORDER BY bm25(documents_fts,5.0,1.0),d.id LIMIT ?`).all(...[match, ...(region ? [region] : []), limit])
+      WHERE documents_fts MATCH ? ${regions ? `AND d.region IN (${regions.map(() => '?').join(',')})` : ''}
+      ${ids ? `AND d.id IN (${ids.map(() => '?').join(',')})` : ''}
+      ORDER BY bm25(documents_fts,5.0,1.0),d.id LIMIT ?`).all(...[match, ...(regions ?? []), ...(ids ?? []), limit])
     return rows.flatMap((row) => { const doc = this.document(String(row.id)); return doc ? [doc] : [] })
   }
 
@@ -179,16 +185,16 @@ export class PolicyV2Database {
    * @param query - Topic query with explicit title removed when scoped.
    * @param limit - Candidate bound.
    * @param ids - Optional document scope; an empty list yields no matches.
-   * @param region - Explicit geographical filter.
+   * @param regions - Allowed catalog province names.
    * @returns Ranked original units, never presegmented index text.
    */
-  searchPassages(query: string, limit: number, ids?: string[], region?: string): Passage[] {
+  searchPassages(query: string, limit: number, ids?: string[], regions?: readonly string[]): Passage[] {
     const match = policyMatch(query)
-    if (!match || ids?.length === 0) return []
+    if (!match || ids?.length === 0 || regions?.length === 0) return []
     const params: SQLInputValue[] = [match]
     const conditions: string[] = []
     if (ids) { conditions.push(`u.document_id IN (${ids.map(() => '?').join(',')})`); params.push(...ids) }
-    if (region) { conditions.push('d.region=?'); params.push(region) }
+    if (regions) { conditions.push(`d.region IN (${regions.map(() => '?').join(',')})`); params.push(...regions) }
     params.push(limit)
     const rows = this.sql.prepare(`SELECT u.* FROM content_units_fts
       JOIN content_units u ON u.rowid=content_units_fts.rowid JOIN documents d ON d.id=u.document_id
@@ -215,18 +221,41 @@ export class PolicyV2Database {
     return rows.map(unit => ({ ...unit, document: doc }))
   }
 
+  /** Read an ordered source range for vector evidence validation.
+   * @param documentId - Exact document version.
+   * @param start - Inclusive sequence.
+   * @param end - Inclusive sequence.
+   * @returns Original units, with their document identity.
+   */
+  atSequence(documentId: string, start: number, end: number): Passage[] {
+    const document = this.document(documentId)
+    if (!document) return []
+    return this.sql.prepare('SELECT * FROM content_units WHERE document_id=? AND sequence BETWEEN ? AND ? ORDER BY sequence')
+      .all(documentId, start, end).map(sourceRow).map(unit => ({ ...unit, document }))
+  }
+
   /** Read an exact original selection in consecutive structural pages.
    * @param request - Fixed version and scope.
    * @param maxCharacters - Page character bound; oversized units continue explicitly on the next page.
+   * @param selection - Internal verified graph version and optional source-line ranges, included in cursor identity.
    * @returns Original text and continuation state. A missing article has found=false.
    */
-  read(request: PolicyV2ReadRequest, maxCharacters: number): PolicyV2ReadResult {
+  read(request: PolicyV2ReadRequest, maxCharacters: number,
+    selection?: { identity: string; ranges?: { start: number; end: number }[] }): PolicyV2ReadResult {
     const doc = this.document(request.document_id)
     if (!doc) throw new Error('Unknown document_id; call policy_search first')
     const scope = request.scope ?? 'full'
     if (scope !== 'full' && !request.selector) throw new Error('section/article requires selector')
     const requestedSelector = request.selector ?? ''
     let units = this.sql.prepare('SELECT * FROM content_units WHERE document_id=? ORDER BY sequence').all(doc.id).map(sourceRow)
+    const ranges = selection?.ranges
+    if (ranges) units = units.flatMap((unit) => {
+      const lines = unit.text.match(/[^\n]*\n|[^\n]+$/gu) ?? []
+      const kept = lines.map((text, index) => ({ text, line: unit.line_start + index })).filter(line =>
+        ranges.some(range => line.line >= range.start && line.line <= range.end))
+      const first = kept[0]; const last = kept.at(-1)
+      return first && last ? [{ ...unit, text: kept.map(line => line.text).join(''), line_start: first.line, line_end: last.line }] : []
+    })
     if (scope === 'article') units = units.filter(unit => unit.kind === 'article' && articleKey(unit.label) === articleKey(requestedSelector))
     if (scope === 'section') {
       const selector = canonical(requestedSelector)
@@ -249,7 +278,7 @@ export class PolicyV2Database {
       if (ranges.length > 1) throw new Error('Section selector is ambiguous; read full text or specify the complete heading')
       units = ranges[0] ?? []
     }
-    const identity = createHash('sha256').update(JSON.stringify([doc.id, doc.source_hash, scope, request.selector ?? ''])).digest('hex')
+    const identity = createHash('sha256').update(JSON.stringify([doc.id, doc.source_hash, scope, request.selector ?? '', selection ?? null])).digest('hex')
     let offset = 0
     let within = 0
     if (request.cursor) {

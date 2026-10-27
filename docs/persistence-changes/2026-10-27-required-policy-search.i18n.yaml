@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-27-required-policy-search.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-10-27-required-policy-search.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-10-27-required-policy-search:
+  en: 6addc6f0f221a9ce
+  zh: ea254ca6dcf19675
+/2026-10-27-required-policy-search/summary:
+  en: 776b6544dfd288bc
+  zh: a90595b7eda53ae1
+/2026-10-27-required-policy-search/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-10-27-required-policy-search/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-10-27-required-policy-search/compatibility:
+  en: e28208bd29612910
+  zh: 84e50f638a88f7a4
+/2026-10-27-required-policy-search/verification:
+  en: 3d4c6d65d01d1f8b
+  zh: 9a9ea773a82c3151
+/2026-10-27-required-policy-search/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

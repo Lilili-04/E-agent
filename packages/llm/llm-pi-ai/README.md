@@ -177,6 +177,10 @@ Read these pages when the package-level contract is not enough. They move from t
 -----
 
 <a id="model-experience"></a>
+## Required tool requests
+
+requiredTool is supported for openai-completions routes with a matching tool declaration. The adapter maps it to a named function tool_choice using the SDK payload hook; other protocols reject this request control. Provider compliance still needs validation by the caller.
+
 ## Model Experience
 
 ### Provider request through pi-ai

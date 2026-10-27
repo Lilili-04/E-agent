@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [中文](README.zh.md)
 
-E-agent 基于 DeepSeek Harness，先查环境政策原文，再由模型生成带来源的回答。本次新版仅处理国家级语料。
+E-agent 基于 DeepSeek Harness，先检索环境政策原文，再生成带来源的回答。当前合并版覆盖国家级与省级资料。
 
 ## 阅读导航
 
@@ -21,20 +21,19 @@ E-agent 基于 DeepSeek Harness，先查环境政策原文，再由模型生成�
 
 ## 项目能力与范围
 
-支持法规名称、文号、条号、主题查询和整部文件概括。新版样本库包含 495 份去重国家级文件、63,175 个原文内容单元，约 84.4 MiB；数据库和语料不提交 Git。省级未纳入。效力标注来自目录，系统不独立判断法律效力。
+合并 SQLite 包含2,045份文件，支持法规名称、文号、条号、主题、全文概括，以及图谱辅助的历史版本查询。数据库和语料不进入 Git；目录效力标注和库内最新版均不等于独立核验的现行有效状态。
 
 <a id="architecture"></a>
 
 ## 架构与问答链路
 
-新版部署把检索代码放在 Harness 容器里。SQLite 原文文件放在宿主机，以只读目录挂载给 Harness；Chroma、Embedding 模型、问答模型分别运行。不需要 SQLite 服务容器，也不需要旧检索 API 参与这条新链路。仓库保留旧 API 供已有部署使用；更新代码不等于已经更新 DGX。
+检索在 Harness 中运行。后端先自动搜索、读取原文，并持久化记录证据，再交给模型回答。SQLite 只读挂载，向量和图谱服务独立运行；模型意图识别与拆题保持关闭，历史版本和效力问题按需使用图谱。
 
 ```text
-User → Harness → Answer model calls policy_search
-                    ├─ Exact lookup / Jieba＋BM25 → Mounted SQLite
-                    └─ Embedding → Chroma → Validate and read SQLite sources
-          Model calls policy_read as needed → Article / section / full pages
-          Model answers from source evidence → User
+User → Harness backend → Exact lookup / Jieba＋BM25 / Chroma
+                         → Read SQLite original sources
+                         → Graph history when needed
+                         → Persist evidence → Answer model → User
 ```
 
 `documents` 保存每份版本的标题、文号、日期、效力标注、description、全文及来源路径。`content_units` 保存原文条款、标题、段落及其顺序、章节和行号。两套 FTS5 索引分别检索标题/description 和正文，FTS5 的影子表不是业务表。摘要帮助发现文件，回答引用仍以原文为依据。
@@ -45,7 +44,7 @@ User → Harness → Answer model calls policy_search
 
 ## 多路召回
 
-代码规则决定通道：明确法规和条号直接定位；全文概括先确定文件再读取全文；明确法规下的具体主题限定在该文件正文；一般主题融合正文 BM25、文档向量和片段向量。模型决定调用工具和如何根据证据回答。
+后端规则选择精确定位、BM25与语义召回、文件读取或图谱辅助历史检索。回答模型使用已经准备好的证据，可通过受限工具补查来源，不需要主动发起首次检索。
 
 Jieba 用于正文与问题分词，SQLite FTS5 原生 BM25 排序，候选融合后统一取原文。既有 DGX 向量只在构建 ID、原文哈希和片段映射一致时复用。语义服务失败会明确报告，仍可执行 BM25。查询不会自动重建向量。
 
@@ -58,7 +57,7 @@ Jieba 用于正文与问题分词，SQLite FTS5 原生 BM25 排序，候选融�
 | A．DGX 网页应用 | Harness 容器＋DGX 宿主机只读挂载 SQLite | DGX 独立容器 |
 | B．本地网页应用 | 本地 Harness；通过 v2 API 读取 DGX SQLite | DGX 独立容器 |
 
-A 的部署入口见 [DGX 指南](docs/user/guide/dgx-deployment.zh.md)。B 使用同一指南中的 v2 API 和本地启动配置，支持远程 `policy_read` 分页，不需要本地 SQLite；旧 18080 API 仅保留兼容。离线开发仍可使用同版本 SQLite 快照。
+当前 A 方式使用[合并版 DGX 部署指南](deploy/dgx-combined/README.zh.md)。B 需要另行启用受鉴权的 v2 API，合并部署默认不开放该接口。迁移验收后，旧应用和数据服务停止运行并作为回滚资源保留。
 
 <a id="run"></a>
 
@@ -98,7 +97,7 @@ Git 保存代码、依赖锁文件、部署模板和文档，不保存 SQLite、
 
 ## 验证与局限
 
-本地回归包括 7 项工具/分词/分页/向量关联测试、10 个真实检索问题，以及通过 DGX 模型执行的《水土保持法》《核安全法》全文概括。495 份文件共 1,068 页重组后与导入原文一致；这不代表逐份核对过 PDF，也不代表答案准确率。
+测试覆盖后端证据整理、精确定位、语义来源校验、分页、图谱沿革和远程传输。真实问题报告分别评估检索、回答准确性与引用；通过部署检查不等于全部法规或回答均准确。
 
 主题检索可能召回过宽的候选，部分同名版本条款相近。38 份来源未能无歧义匹配目录元数据；一份旧摘要因原文哈希不符被排除。现有向量映射覆盖 493 条未变化的旧来源记录；新增或变更原文仍可通过 BM25 找到。全文超过模型上下文时，归纳还受压缩保留信息影响。
 

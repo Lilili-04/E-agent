@@ -1,5 +1,5 @@
 ---
-description: "构建并查询本地国家级环境政策法规证据索引。"
+description: "构建并查询国家级及唯一匹配清单的地方环境政策法规证据。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包提供实验性的国家级环境政策法规知识能力。它盘点和解析 Markdown 来源，抽取可审核元数据，校验模型辅助生成的 description，构建带版本标识的 SQLite 索引，规划法规查询，并通过 Cordis 服务和 `policy_search` 工具返回有大小限制的原文证据。它暂不处理省级文档，也不独立判断法律效力。
+本包检索国家级及唯一匹配清单的地方环境政策法规证据。它盘点和解析 Markdown，校验有原文支持的摘要，构建 SQLite 索引，通过 `policy_search` 和 `policy_read` 返回原文证据。它不独立判断法律效力，也不把清单省份当作全省适用的证明。
 
 ## 目录
 
@@ -30,9 +30,25 @@ kind: "package-reference"
 
 在仓库根目录执行 `python scripts/prepare-policy-v2.py --workspace .. --legacy data/policy-national-v1.sqlite --output .dsh-build/policy-v2-documents.jsonl --corpus national` 准备国家级语料，再执行 `node --import tsx/esm scripts/build-policy-v2.ts .dsh-build/policy-v2-documents.jsonl data/policy-v2-trial.sqlite` 建库。输出必须使用新文件名，脚本拒绝覆盖旧库。Python 需要 `openpyxl`。Markdown、description 和清单工作簿仍不进入 Git。导入文件旁生成审核报告及旧向量映射 JSON；与原文哈希不符的摘要、占位元数据不入库。
 
-服务配置包括 `path`、可选但须同时填写的 `semanticConfigPath` 和 `compatibilityPath`，以及 `candidateLimit`、`resultLimit`、`pageCharacters`、`evidenceCharacters` 上限。语义配置 JSON 提供 DGX 的 Embedding/Chroma 地址、模型、集合和超时。旧向量须通过构建版本、原文哈希和片段校验；失败会明确报告，BM25 仍可使用。查询不会写入向量集合，语义覆盖范围以原国家级索引为准。
+提供者设置包括 `path`、可选的 `semanticConfigPath`，以及二选一的 `compatibilityPath`（旧向量）或 `vectorManifestPath`（合并向量）；数量和输出限制为 `candidateLimit`、`guidedCandidates`、`maxEvidencePerDocument`、`resultLimit`、`pageCharacters`、`evidenceCharacters`。语义 JSON 配置 Embedding/Chroma 地址、模型、集合和超时。旧向量需要匹配构建、来源哈希及原文范围；失败会明确报告，BM25 仍可用。搜索不会写入集合，旧模式覆盖范围取决于已有国家级向量快照。
 
-`policy_read` 接收 `document_id`、`scope`（`full`、`section`、`article`）、章节/条款的精确 `selector` 和可选 `cursor`。须用 `next_cursor` 继续读到 `has_more=false`。超长单元跨页时标记 `unit_fragments=true`；条款不存在时返回 `found=false`。`source_complete` 描述导入的原文完整性，不代表法律效力。搜索片段标记 `excerpted` 时须继续读取。每个 Agent 的每轮对话独立检查未完成的全文读取，提醒达到配置上限后以错误停止；该检查不能验证模型的理解，超过上下文窗口的长文件仍依赖压缩。
+合并库运行方式见[本地 Harness 指南](../../../deploy/local-vectors/README.zh.md#harness)。启动时校验构建清单与 SQLite 文件哈希、模型、维度、距离度量和集合名称。检索对完整原问题生成一次向量，传输失败允许有限重试；向量召回前按地域及可选文件范围过滤。BM25 与向量通道各自按地域保留候选预算；RRF 合并通过来源校验的结果，平衡地域、限制单文件证据数量，并合并同章节相邻单元。`unit_ids` 保留合并证据的原始成员。精确条款和全文读取仍直接使用 SQLite。部分向量通道失败会返回警告，保留可用的 BM25 证据。
+
+可选 `latestManifestPath` 指向由 `scripts/build-policy-latest.py` 生成、绑定 SQLite 哈希的离线允许清单。本地启动器要求 `deploy/local/policy-latest.json`。普通请求在排序前将精确匹配、BM25、组合向量及文档引导候选限制为各法规的库内最新正文；这不代表现行有效。法规身份来自已审核图谱导出，版本顺序依据日期及同一身份的整版修订关系。日期并列、顺序不明或排序矛盾的身份排除并待核实；最新正文缺失不退回旧版。明确命中的不可用身份返回 `latest_version_unavailable` 和原因。明确年份、文号、历史或效力意图进入图谱路径；仅书名中的相关字样不触发沿革查询。普通读取保留离线资料完整性标记。
+
+可选 `graphConfigPath` 在 `./v2-service` 内支持历史版本、沿革和效力问题，不增加工具或监听端口。图谱按需加载：首次历史请求检查冻结图谱/SQLite 哈希，向已有本地 Neo4j 核对身份、来源定位和事件；后续历史操作复用已验证快照，直到重新加载提供者。图谱不可达或不一致时，历史操作明确报错。普通搜索及不带 `version_id` 的读取不会加载或调用图谱。本地启动器保留全部分区。
+
+历史请求的图谱身份解析先于标题缺失和精确条款分支。检索返回有上限的 `graph` 版本卡片和一跳沿革；普通正文检索继续使用 BM25/Chroma。`selected_version_ids` 区分本次匹配版本和相关端点；`truncated` 表示清单不完整。事件区分发出版本和保存证据的来源；未确定目标版本时保留 `target_version_id=null`。没有废止事件不代表现行有效，未知日期和审核标记保持原值。沿革结论须先读取 `events.sources`；未收入 SQLite 的补充来源不提供读取定位。
+
+使用图谱 `read_sources` 时，向 `policy_read` 同时传入实际正文 `document_id` 和 `version_id`，分页时保持两者不变。`text_role=body` 读取该版本已有正文；`attachment` 限制在核验过的附件范围；`history_evidence` 只返回留存的沿革依据，并拒绝对缺失历史正文请求条款或章节。后两者标记 `source_complete=false`。游标绑定来源哈希、图谱版本和范围，不会以新版正文替代缺失旧版。图谱输出单独限制字符预算，增加上下文 token，但不增加模型或 Embedding 轮次。
+
+离线合库先执行 `python scripts/prepare-policy-combined.py --workspace .. --national-db data/policy-v2-national-presentation-r2.sqlite --output .dsh-build/policy-combined.jsonl`，再按上面的建库命令将该 JSONL 和新 SQLite 路径传入 `scripts/build-policy-v2.ts`。需要 Python 3.10+ 和 `openpyxl`。需在指定路径准备国家级修复版快照，记录逐字段继承，包括 ID 和已修正元数据。地方抽取结果只有唯一匹配清单行才准入，未匹配、歧义和已知正文错配直接排除。导入审计记录排除项、正文质量备注、省份数量及基线哈希。不构建向量；离线仅用 BM25 时省略两项语义配置，诊断明确返回 `semantic_not_configured`。原国家级向量不代表地方资料已有语义覆盖。
+
+`region` 是清单中的省份归属，不是法律适用范围认定。未指定地区的问题只检索全国依据，显式传入或在问题中点明省份时联合检索全国及该省资料；`region_mode=only` 只检索所选省份，“江苏”等简称归一化到库中名称。不从命中文件推断省份；明确文件超出地域范围时拒绝请求。比较地区时分别检索，市县、流域、试点等限制仍须核对正文。读取及全文分页继续绑定确定的文件 ID。
+
+`policy_read` 接收 `document_id`、`scope`（`full`、`section`、`article`）、章节/条款的精确 `selector` 和可选 `cursor`。须用 `next_cursor` 继续读到 `has_more=false`。超长单元跨页时标记 `unit_fragments=true`；条款不存在时返回 `found=false`。`source_complete` 描述导入的原文完整性，不代表法律效力。搜索片段标记 `excerpted` 时须继续读取。每个 Agent 的每轮对话独立跟踪所有待完成的全文读取，包括同时指定的多部法规和候选版本，提醒达到配置上限后以错误停止；该检查不能验证模型的理解，超过上下文窗口的长文件仍依赖压缩。
+
+工具插件要求作答前先调用 `policy_search`；只有元数据或全文尚未读完时，继续要求 `policy_read`。受约束的模型响应先缓冲，确认完成指定工具调用后才放行工具内容，不展示其中的正文或推理块；忽略工具要求的响应在答案展示前报错。搜索为空且无可读来源时，返回明确的证据缺口说明。普通读取只接受本轮搜索返回的文档 ID；图谱读取还须匹配返回的文档与版本配对。同时指定多部法规时，不因名称长度不同而丢弃较短名称。这些检查确认依据是否可用，不验证模型对依据的理解是否正确。
 
 本地 Harness、政策数据全部留在 DGX 时，挂载 `./v2-remote-service`，配置 `endpoint`、`tokenFile` 和可选 `timeoutMs`/`maxResponseBytes`，继续使用同一套 `./v2-tools`。客户端不打开 SQLite，也不回退本地库。DGX 的 `./v2-http` 注入本地 v2 服务，提供鉴权的 `GET /v2/policy/status`、`POST /v2/policy/search` 和 `POST /v2/policy/read`；search/read 请求体使用工具参数字段。两端均需私有 token 文件，至少 32 字符。监听默认 loopback 18081、请求上限 32 KiB、期限 15 秒。无效请求返回 400，缺少凭据 401，正文过大 413；客户端支持取消与响应大小限制。部署与本地启动配置见 [DGX 指南](../../../docs/user/guide/dgx-deployment.zh.md)。
 
@@ -160,6 +176,20 @@ description 的格式、引用、哈希和审核状态校验保持确定性，�
 #### KV Cache 影响
 
 同一插件配置下的提示词段和工具 schema 保持稳定，因此可以留在可复用请求前缀中。检索结果和最终回答追加在此前缀之后；调整任一输出上限只改变配置，不改变固定的模型可见文本。
+
+### Policy V2 自动整理证据
+
+#### 模型看到什么
+
+本地合并组合通过 `planningProvider` 和 `planningModel` 启用模型规划。回答前，辅助模型调用理解已接收的问题、拆分子问题，并选择具体知识、文件发现、整份文件概括、沿革或效力检索。后端校验JSON、保留原问题的地域限制、在已有库中确认候选名称；模型提示的名称没有适用原文时，按子问题发现实际来源，用户明确指定的文件仍是硬限制。另一次模型调用逐项审核实际原文，后端拒绝不存在的来源编号、过滤作为当前依据的失效文件和草案、核对任务覆盖并执行有上限的补检。同一原文页可供多个子问题复用。历史废止日期未核实的任务只能保留部分覆盖，沿革记载不能标成当年完整正文。辅助调用的精确输入和结束输出分别在派发前后记录为 `policy/retrieval-model`，最终核对后的资料仍以正常持久化的 `policy-evidence` 消息交给回答模型。回答直接给结果，保留缺口和冲突，隐藏内部工作术语并列出实际来源。未配置规划路由的组合保留此前自动检索读取路径。
+
+#### Token 影响
+
+规划增加一次辅助模型调用，随后进行覆盖审核，并可在上限内补检或修正输出。本地组合最多6个子问题、10次搜索、2轮覆盖审核；辅助调用输出上限2048 token、单次期限45秒，原文读取预算24页、8份文件。达到预算时保留未覆盖状态。`evidenceCharacters` 限制包含元数据和图谱上下文的完整序列化证据包；`evidencePages`、`evidenceDocuments` 和 `retrievalTimeoutMs` 限制整理过程。截断不能证明源文件完整。已有 SQLite、关键词索引、Chroma 集合和 Neo4j 数据均保持只读。
+
+#### KV Cache 影响
+
+简短的固定指导保留在稳定提示词前缀中。每批新接收的用户输入追加本次证据，模型看到的证据可以从会话日志重建，不隐藏在请求回调内。
 
 ## Known Limitations and Deferred Work
 

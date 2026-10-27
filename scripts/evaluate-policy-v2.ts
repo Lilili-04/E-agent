@@ -29,11 +29,11 @@ try {
     const reads = []
     const doc = result.documents[0]
     if (result.requires_full_read && result.documents.length === 1 && doc) {
-      let page = provider.read({ document_id: doc.id })
+      let page = await provider.read({ document_id: doc.id })
       let text = page.text; let pages = 1
       while (page.has_more) {
         if (!page.next_cursor) throw new Error('Incomplete read has no continuation cursor')
-        page = provider.read({ document_id: doc.id, cursor: page.next_cursor })
+        page = await provider.read({ document_id: doc.id, cursor: page.next_cursor })
         text += page.text; pages++
       }
       const path = provider.database.sql.prepare('SELECT markdown_path FROM documents WHERE id=?').get(doc.id)?.markdown_path

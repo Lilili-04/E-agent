@@ -43,6 +43,8 @@ data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
 data/*.sqlite.manifest.json
+/data/policy-combined-local-vectors-r2/
+/scripts/__pycache__/
 .playwright-mcp/
 .orig
 .worktrees/

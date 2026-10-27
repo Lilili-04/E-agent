@@ -1,0 +1,99 @@
+# Local SQLite, Chroma and Neo4j retrieval with the existing DGX model endpoints.
+- id: agent-preset-registry
+  config:
+    default: environment-policy
+
+- insert:
+    - id: preset-environment-policy
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: environment-policy
+        name: 环境政策法规问答
+        description: 检索本地全国与省级环境政策法规库，依据原文回答条款、主题、发布日期、效力状态和版本问题，并列出来源。
+        order: 0
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 你是环境政策法规问答助手。
+              suffix: 直接给出结论和要点，不描述后端、检索或证据包；资料不足时用自然语言说明具体缺口，末尾列出实际使用的法规及条款。
+          - id: environment-policy
+            name: cordis:group
+            group: true
+            isolate:
+              environmentPolicyV2: true
+            config:
+              - id: environment-policy-v2-service
+                name: '@deepseek-ai/dsh-experimental-environment-policy/v2-service'
+                config:
+                  path: !!js process.env.POLICY_V2_DB_PATH
+                  semanticConfigPath: !!js process.env.POLICY_V2_SEMANTIC_CONFIG_PATH
+                  vectorManifestPath: !!js process.env.POLICY_V2_VECTOR_MANIFEST_PATH
+                  latestManifestPath: !!js process.env.POLICY_V2_LATEST_MANIFEST_PATH
+                  graphConfigPath: !!js process.env.POLICY_V2_GRAPH_CONFIG_PATH
+                  candidateLimit: 30
+                  guidedCandidates: 20
+                  maxEvidencePerDocument: 3
+                  pageCharacters: 10000
+                  evidenceCharacters: 12000
+              - id: tool-environment-policy
+                name: '@deepseek-ai/dsh-experimental-environment-policy/v2-tools'
+                config:
+                  evidenceCharacters: 28000
+                  evidencePages: 12
+                  evidenceDocuments: 8
+                  retrievalTimeoutMs: 45000
+
+- id: llm-pi-ai
+  config:
+    providers:
+      dgx-qwen36:
+        displayName: DGX Qwen3.6
+        apiKeyEnv: DGX_QWEN36_API_KEY
+        api: openai-completions
+        baseURL: http://127.0.0.1:8001/v1
+        timeoutMs: 180000
+        streamIdleTimeoutMs: 60000
+        retryPolicy:
+          mode: normal
+          maxRetries: 1
+        compat:
+          supportsStore: false
+          supportsDeveloperRole: false
+          supportsReasoningEffort: false
+          supportsUsageInStreaming: true
+          maxTokensField: max_tokens
+          thinkingFormat: qwen-chat-template
+          chatTemplateKwargs:
+            enable_thinking: false
+        models:
+          - id: qwen3.6-35b-a3b-vllm
+            name: Qwen3.6-35B-A3B（DGX NVFP4）
+            contextWindow: 196608
+            maxTokens: 2048
+            input: [text]
+            reasoningEfforts: false
+
+- id: agent-default-model
+  config:
+    provider: dgx-qwen36
+    model: qwen3.6-35b-a3b-vllm
+
+- id: time-context
+  disabled: false
+  config:
+    timeZone: Asia/Shanghai
+
+- id: webserver
+  config:
+    host: 0.0.0.0
+    port: !!js Number(process.env.HARNESS_PORT)
+
+- id: web-runtime
+  config:
+    openBrowser: false
+    printUrl: true
+    trustedHosts: !!js process.env.HARNESS_TRUSTED_HOSTS.split(',').map(value => value.trim()).filter(Boolean)
+
+- id: hmr
+  disabled: true

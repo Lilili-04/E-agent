@@ -9,14 +9,20 @@
   en: 74cf05c0aa1419b2
   zh: 38b25460e80be2d3
 /dgx-database-viewers/summary:
-  en: d633638adc81d09d
-  zh: cff590c7afaea0b0
+  en: 53667f6b344e7997
+  zh: 4cb6de07c43ef5ec
 /dgx-database-viewers/table-of-contents:
-  en: 88f5ae467725426a
-  zh: ef5cec9957331ef0
+  en: 3bb5e06b8a4a8c98
+  zh: e6bad1f56db1b576
 /dgx-database-viewers/components-and-access:
-  en: c45690edeacd29ca
-  zh: 48eeacacab18fd18
+  en: aa772ec12853744a
+  zh: 2b772c8fd85256fc
+/dgx-database-viewers/local-sqlite-snapshot-on-windows:
+  en: 262d781fb76d7e5b
+  zh: bd52e049637be43a
+/dgx-database-viewers/local-vector-database-on-windows:
+  en: f82ce7c820a86313
+  zh: 2c048c00ea1ee9b4
 /dgx-database-viewers/prepare-configuration-on-dgx:
   en: 6dcec81620c999d6
   zh: 806e7a0321470ad6

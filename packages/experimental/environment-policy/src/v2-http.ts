@@ -21,7 +21,7 @@ export default class PolicyV2Http extends Service {
   static Config = Config
   static inject = ['environmentPolicyV2']
   /** Listening endpoint, including the assigned ephemeral port in tests. */
-  endpoint = ''
+  endpoint: string = ''
   private readonly shutdown = new AbortController()
   private readonly pending = new Set<Promise<void>>()
   private readonly server

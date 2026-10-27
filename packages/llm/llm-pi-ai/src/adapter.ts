@@ -217,6 +217,8 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
  * restart; model descriptors come from the collection those profiles built.
  */
 export class PiAiAdapter extends LlmAdapter {
+  override readonly supportsRequiredTool = true
+
   private snapshot: PiAiSnapshot | undefined
 
   constructor(private readonly config: PiAiAdapterOptions) {
@@ -341,6 +343,10 @@ export class PiAiAdapter extends LlmAdapter {
     // the one it started with and the next call picks up the new one.
     const profile = this.profileOf(snapshot, options.provider)
     const model = this.modelOf(snapshot, options.provider, options.model)
+    if (options.requiredTool && (model.api !== 'openai-completions'
+      || !options.tools?.some(tool => tool.name === options.requiredTool))) {
+      throw new LlmError('Required tool needs a declared tool and openai-completions route', 'INVALID_REQUEST')
+    }
     const reasoning = resolveReasoningLevel(
       model,
       options.reasoningEffort ?? profile.reasoning,
@@ -379,6 +385,12 @@ export class PiAiAdapter extends LlmAdapter {
         }, onReplayDegrade)
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
+        ...options.requiredTool === undefined ? {} : {
+          onPayload: (payload: unknown) => {
+            if (typeof payload !== 'object' || payload === null) throw new LlmError('Invalid tool request payload', 'INVALID_REQUEST')
+            return { ...payload, tool_choice: { type: 'function', function: { name: options.requiredTool } } }
+          },
+        },
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },

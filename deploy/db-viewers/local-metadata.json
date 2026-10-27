@@ -1,0 +1,25 @@
+{
+  "title": "本地环境政策数据库",
+  "description": "国家与地方合并库 · 只读浏览。documents 是文件及元数据，content_units 是正文单元；点击 document_id 可查看所属文件。",
+  "databases": {
+    "policy-combined-local-20261022-r2": {
+      "title": "国家与地方政策 · 本地合并库",
+      "description": "495 份国家文件 + 1,550 份地方文件。region 为目录匹配后的地域归属，具体适用范围请结合正文判断。",
+      "tables": {
+        "documents": {"title": "文件与元数据", "label_column": "title"},
+        "content_units": {"title": "正文单元"}
+      },
+      "queries": {
+        "region_counts": {
+          "title": "各地区文件数量",
+          "sql": "select region, count(*) as document_count, sum(text_status = 'complete') as complete, sum(text_status = 'partial') as partial from documents group by region order by document_count desc"
+        },
+        "search_titles": {
+          "title": "按标题关键词搜索",
+          "description": "在 keyword 中输入标题关键词，例如 碳达峰。留空显示全部；可继续点击文件 ID 阅读正文。",
+          "sql": "select id, title, region, document_number, issuing_authority, publish_date, legal_status, text_status from documents where title like '%' || :keyword || '%' order by region, title"
+        }
+      }
+    }
+  }
+}

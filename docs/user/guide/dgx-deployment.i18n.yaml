@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/guide/dgx-deployment.md
 /run-the-environment-policy-harness-on-dgx:
-  en: b4f0bf627af1e094
-  zh: 85b7952851211993
+  en: c17cab95aff7ef1f
+  zh: cfa7db26f5851f9d
 /run-the-environment-policy-harness-on-dgx/deployment-layout:
   en: ec695222503b9bce
   zh: fae516d3095a9b70
@@ -15,8 +15,11 @@
   en: ad8c4b6bf29e07fe
   zh: a8fdd7a2f2ecf89c
 /run-the-environment-policy-harness-on-dgx/build-and-start:
-  en: 085b5f3c9f91770c
-  zh: 11c8cbffb97432aa
+  en: cb0928391aa1a4e3
+  zh: 9cb6b232aeda069c
+/run-the-environment-policy-harness-on-dgx/local-harness-with-dgx-data:
+  en: cd08389c24221a95
+  zh: d91409fa15ffd04d
 /run-the-environment-policy-harness-on-dgx/restart-update-and-rollback:
   en: 26eeb135cb74ab2f
   zh: c4746199119a2dd4

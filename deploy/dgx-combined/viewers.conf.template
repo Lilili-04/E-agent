@@ -1,0 +1,62 @@
+worker_processes auto;
+pid /tmp/nginx.pid;
+error_log /dev/stderr warn;
+events { worker_connections 256; }
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    access_log /dev/stdout;
+    server_tokens off;
+    client_max_body_size 2m;
+    client_body_temp_path /tmp/client_body;
+    proxy_temp_path /tmp/proxy;
+    fastcgi_temp_path /tmp/fastcgi;
+    uwsgi_temp_path /tmp/uwsgi;
+    scgi_temp_path /tmp/scgi;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 20s;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    # The database services do not need the viewer's login password.
+    proxy_set_header Authorization "";
+    auth_basic "E-agent database viewers";
+    auth_basic_user_file /run/secrets/viewer_htpasswd;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy same-origin always;
+
+    server {
+        listen ${VIEWERS_BIND_ADDRESS}:${SQLITE_VIEWER_PORT};
+        location = /healthz { auth_basic off; return 200 "ok\n"; }
+        location / {
+            limit_except GET { deny all; }
+            proxy_pass http://127.0.0.1:18105;
+        }
+    }
+
+    server {
+        listen ${VIEWERS_BIND_ADDRESS}:${CHROMA_VIEWER_PORT};
+        root /usr/share/nginx/html;
+        index index.html;
+        location = /healthz { auth_basic off; return 200 "ok\n"; }
+        location ~ ^/api/v2/(heartbeat|version|pre-flight-checks|auth/identity)$ {
+            limit_except GET { deny all; }
+            proxy_pass http://${CHROMA_UPSTREAM};
+        }
+        location ~ ^/api/v2/tenants/[^/]+(/databases(/[^/]+(/collections(/[^/]+(/count)?)?)?)?)?/?$ {
+            limit_except GET { deny all; }
+            proxy_pass http://${CHROMA_UPSTREAM};
+        }
+        # Chroma reads records and searches vectors using POST.
+        location ~ ^/api/v2/tenants/[^/]+/databases/[^/]+/collections/[^/]+/(get|query)$ {
+            limit_except POST { deny all; }
+            proxy_pass http://${CHROMA_UPSTREAM};
+        }
+        location /api/ { return 403; }
+        location / {
+            limit_except GET { deny all; }
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

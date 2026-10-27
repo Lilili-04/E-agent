@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-E-agent uses DeepSeek Harness to retrieve environmental policy sources before generating cited answers. This revision handles national material only.
+E-agent uses DeepSeek Harness to retrieve original environmental policy text and generate cited answers. The current combined release covers national and provincial material.
 
 ## Reading guide
 
@@ -21,20 +21,19 @@ E-agent uses DeepSeek Harness to retrieve environmental policy sources before ge
 
 ## Capabilities and scope
 
-The tools support titles, identifiers, articles, topics and whole-document summaries. The new sample snapshot has 495 deduplicated national documents and 63,175 source units, approximately 84.4 MiB; neither data nor corpus enters Git. Provincial material is excluded. Status labels come from the catalog, not an independent determination of legal validity.
+The combined SQLite snapshot contains 2,045 documents. It supports law names, identifiers, articles, topics, summaries, and graph-assisted historical queries. Databases and source material remain outside Git. Catalog status and the latest stored version do not independently establish legal validity.
 
 <a id="architecture"></a>
 
 ## Architecture and question-answering flow
 
-The new deployment runs retrieval inside the Harness container. SQLite sources remain on the host and are mounted read-only; Chroma, embedding and answer models remain separate services. No SQLite server or old retrieval API is required in this flow. The repository retains the old API for existing installations; updating code does not itself update DGX.
+Retrieval runs in Harness. The backend automatically searches and reads original sources before the answer model runs, then durably records the evidence packet. SQLite is mounted read-only; vector and graph services run separately. Model planning remains disabled. Historical and validity questions use the graph when needed.
 
 ```text
-User → Harness → Answer model calls policy_search
-                    ├─ Exact lookup / Jieba＋BM25 → Mounted SQLite
-                    └─ Embedding → Chroma → Validate and read SQLite sources
-          Model calls policy_read as needed → Article / section / full pages
-          Model answers from source evidence → User
+User → Harness backend → Exact lookup / Jieba＋BM25 / Chroma
+                         → Read SQLite original sources
+                         → Graph history when needed
+                         → Persist evidence → Answer model → User
 ```
 
 `documents` stores version-specific titles, identifiers, dates, status, descriptions, full text and paths. `content_units` stores original articles, headings and paragraphs with order, section and line addresses. Two FTS5 indexes search title/description and body; their shadow tables are not business tables. Descriptions aid discovery, while answers cite original text.
@@ -45,7 +44,7 @@ User → Harness → Answer model calls policy_search
 
 ## Multiple recall channels
 
-Code rules select channels: explicit laws and articles use exact lookup; whole-document summaries identify a file then read it; a topic within a named law scopes body retrieval; general topics fuse body BM25, document vectors and passage vectors. The answer model chooses tool calls and interprets the returned evidence.
+Backend rules select exact lookup, BM25 and semantic recall, document reading, or graph-assisted history. The answer model interprets prepared evidence and may supplement missing sources through bounded tools. It does not need to initiate the first search.
 
 Jieba segments both source and query, and native SQLite FTS5 BM25 ranks lexical matches. Fusion retrieves original text. Existing DGX vectors require matching build ID, source hash and source span. Semantic failures are reported while BM25 remains available. Queries never rebuild vectors automatically.
 
@@ -58,7 +57,7 @@ Jieba segments both source and query, and native SQLite FTS5 BM25 ranks lexical 
 | A. DGX Web application | Harness container with a read-only host SQLite mount | Separate DGX containers |
 | B. Local Web application | Local Harness; DGX SQLite through the v2 API | DGX containers |
 
-See the [DGX guide](docs/user/guide/dgx-deployment.md) for A. B uses the v2 API and local launch configuration in the same guide, supports remote `policy_read` pagination and requires no local SQLite. The old port 18080 API remains for compatibility. Offline development can still use a matching SQLite snapshot.
+The current A deployment uses the [combined DGX guide](deploy/dgx-combined/README.md). B requires separately enabling the authenticated v2 API; the combined deployment does not expose it by default. The old application and data services are retained as stopped rollback resources after migration acceptance.
 
 <a id="run"></a>
 
@@ -98,7 +97,7 @@ Git contains code, lockfiles, templates and documentation, excluding SQLite, cor
 
 ## Verification and limitations
 
-Local evidence includes seven tool/tokenization/paging/vector-link tests, ten real retrieval queries and DGX-model summaries of the Water and Soil Conservation Law and Nuclear Safety Law. Reassembling 1,068 pages across all 495 documents reproduces imported text; this is neither a PDF audit nor an answer-accuracy measurement.
+Tests cover backend evidence preparation, exact lookup, semantic source validation, pagination, graph history, and remote transport. Real-question reports separately assess retrieval, answer correctness, and citations. Passing deployment checks does not establish complete legal or answer accuracy.
 
 Topic candidates can be broad and versions can contain similar provisions. Thirty-eight sources lack an unambiguous catalog match; one stale summary is excluded by hash. Existing vector mappings cover 493 unchanged old source records; BM25 also searches new or changed text. Whole-document synthesis beyond model context depends on retained compaction detail.
 

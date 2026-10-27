@@ -7,7 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { type ToolExecutionInput } from '@deepseek-ai/dsh-tools'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { expect, it } from 'vitest'
 import { PolicyV2Database } from '../src/v2-database.ts'
@@ -32,7 +32,12 @@ it('serves authenticated v2 search and lossless pages through a remote Loader co
       description: '污染防治', text_status: 'complete', document_number: null, standard_number: null, document_type: '法律',
       issuing_authority: null, region: '全国', publish_date: null, effective_date: null, legal_status: null,
       pdf_path: null, markdown_path: 'private/source/full.md',
-    }])
+    }, ...['江苏省', '浙江省'].map(region => ({
+      id: region, title: region + '污染处理办法', full_text: '第一条 污染物必须处理。\n',
+      source_hash: createHash('sha256').update('第一条 污染物必须处理。\n').digest('hex'), description: '污染防治', text_status: 'complete' as const,
+      document_number: null, standard_number: null, document_type: '办法', issuing_authority: null, region,
+      publish_date: null, effective_date: null, legal_status: null, pdf_path: null, markdown_path: 'private/province/full.md',
+    }))])
     const serverConfig = join(root, 'server.yml')
     await writeFile(serverConfig, [
       '- name: cordis:policy', `  config: { path: ${JSON.stringify(path)}, pageCharacters: 201 }`,
@@ -65,6 +70,16 @@ it('serves authenticated v2 search and lossless pages through a remote Loader co
     expect(client.tools.schemas().map(s => s.name)).toEqual(['policy_search', 'policy_read'])
     const search = await client.environmentPolicyV2.search({ question: '测试环境法讲了什么' })
     expect(search).toMatchObject({ requires_full_read: true, route: 'exact_document', documents: [{ id: 'law' }] })
+    const local = await client.environmentPolicyV2.search({ question: '污染防治', target: 'documents', region: '江苏', region_mode: 'only' })
+    expect(local.documents.map(doc => doc.region)).toEqual(['江苏省'])
+    const combined = await client.environmentPolicyV2.search({ question: '江苏污染防治', target: 'documents' })
+    expect(combined.documents.map(doc => doc.region).sort()).toEqual(['全国', '江苏省'])
+    const scopedTool = await client.tools.execute({ name: 'policy_search',
+      arguments: { question: '污染防治', target: 'documents', region: '江苏省', region_mode: 'only' },
+      callId: ToolCallId('remote-province'), signal: new AbortController().signal })
+    expect(scopedTool.isError).toBe(false)
+    const scopedEvidence = JSON.parse(typeof scopedTool.value === 'string' ? scopedTool.value : '{}') as { documents: Array<{ region: string }> }
+    expect(scopedEvidence.documents.map(doc => doc.region)).toEqual(['江苏省'])
     let page = await client.environmentPolicyV2.read({ document_id: 'law' })
     let text = page.text
     let pages = 1
@@ -75,8 +90,11 @@ it('serves authenticated v2 search and lossless pages through a remote Loader co
     }
     expect(pages).toBeGreaterThan(1)
     expect(text).toBe(original)
+    const agent = {} as NonNullable<ToolExecutionInput['agent']>
+    await client.tools.execute({ name: 'policy_search', arguments: { question: '测试环境法' },
+      callId: ToolCallId('remote-read-discovery'), signal: new AbortController().signal, agent })
     const result = await client.tools.execute({ name: 'policy_read', arguments: { document_id: 'law', scope: 'article', selector: '第999条' },
-      callId: ToolCallId('remote-v2-missing'), signal: new AbortController().signal })
+      callId: ToolCallId('remote-v2-missing'), signal: new AbortController().signal, agent })
     expect(result.isError).toBe(false)
     const block = result.content.find(block => block.type === 'text')
     if (block?.type !== 'text') throw new Error('Missing tool evidence')
@@ -111,4 +129,12 @@ it('rejects incompatible wire payloads before they reach model tools', () => {
   expect(() => readRequest({ document_id: 'law', scope: 'sql' })).toThrow('Invalid read')
   expect(() => readRequest({ document_id: 'law', scope: ['full'] })).toThrow('Invalid read')
   expect(() => searchRequest({ question: '废水', target: ['documents'] })).toThrow('Invalid search')
+  expect(() => searchRequest({ question: '废水', region_mode: 'all' })).toThrow('Invalid search')
+})
+
+
+it('preserves model-selected operations and original scope across the HTTP parser', () => {
+  expect(searchRequest({ question: '改写后的检索词', scope_question: '只查江苏省', mode: 'facts' }))
+    .toEqual({ question: '改写后的检索词', scope_question: '只查江苏省', mode: 'facts' })
+  expect(() => searchRequest({ question: '问题', mode: 'invented' })).toThrow('Invalid search request')
 })

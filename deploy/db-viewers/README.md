@@ -8,11 +8,13 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The project has two deployment arrangements: A (Harness on DGX) and B (local Harness connected to DGX). Both keep their databases on DGX, so deploy the viewers in this directory once. This separate Compose project does not alter startup configuration for Harness, the retrieval API, databases, or models.
+The project has two deployment arrangements: A (Harness on DGX) and B (local Harness connected to DGX). Both keep their databases on DGX, so deploy the viewers in this directory once. The DGX Compose project does not alter startup configuration for Harness, the retrieval API, databases, or models. The local viewers below inspect separate development snapshots.
 
 ## Table of Contents
 
 - [Components and access](#components)
+- [Local SQLite snapshot on Windows](#local)
+- [Local vector database on Windows](#local-vector)
 - [Prepare configuration on DGX](#prepare)
 - [Build, start, and verify](#start)
 - [Update, stop, and troubleshoot](#maintain)
@@ -30,6 +32,44 @@ The project has two deployment arrangements: A (Harness on DGX) and B (local Har
 Both pages share a separate HTTP Basic login file. The gateway forwards only SQLite GET/HEAD and Chroma reads, `get`, and `query` requests; creation, updates, deletion, resets, and other APIs are rejected. Login credentials are not forwarded to Chroma. Services run as non-root users with read-only root filesystems and rotating logs.
 
 These viewers use no GPU, import or copy no corpus, create no Chroma collections, and rebuild no vectors. They inspect data; RAG topic retrieval continues through `policy_search` and the retrieval API.
+
+<a id="local"></a>
+
+## Local SQLite snapshot on Windows
+
+The local offline viewer uses the same Datasette 0.65.5 UI and binds only to `127.0.0.1:18101`, without a login. It opens `data/policy-combined-local-20261022-r2.sqlite` in immutable read-only mode: 2,045 documents and 187,087 content units. The database page includes region counts and parameterized title search. It does not connect to DGX or Chroma, or change the Harness database configuration.
+
+From the repository root in PowerShell, install once with Python 3.10 or newer, then start or stop the hidden background process:
+
+```powershell
+python -m venv .dsh-build/local-db-viewer-venv
+.dsh-build/local-db-viewer-venv/Scripts/python.exe -m pip install datasette==0.65.5
+./deploy/db-viewers/local-sqlite.ps1
+./deploy/db-viewers/local-sqlite.ps1 -Stop
+```
+
+Open <http://127.0.0.1:18101/policy-combined-local-20261022-r2>. `documents` contains metadata and full text; `content_units` contains ordered text units. Table filters accept fields such as `region`; custom SQL accepts reads only. `-Port 18103` selects another port for both start and stop. An occupied port is rejected. PID and logs are stored under `.dsh-build/local-db-viewer-<port>.*`; stopping validates the recorded process identity. Restart after rebuilding the snapshot; immutable connections do not track file changes.
+
+<a id="local-vector"></a>
+
+## Local vector database on Windows
+
+The local viewer uses the same pinned ChromaDB UI as DGX, with write controls hidden. It binds only to `127.0.0.1:18102`, without a login, and opens the completed `data/policy-combined-local-vectors-r2` build: 2,045 document vectors and 126,804 passage vectors. Its read adapter exposes only the two manifest collections and rejects API writes. Browsing stored vectors needs neither DGX nor a GPU.
+
+Use the Python environment from [local vector construction](../local-vectors/README.md) and Node.js with npm. From the repository root, build the frontend once, then start the hidden background process:
+
+```powershell
+.dsh-build/local-vector-venv/Scripts/python.exe -X utf8 deploy/db-viewers/build-local-chroma-ui.py
+./deploy/db-viewers/local-chroma.ps1
+```
+
+Open <http://127.0.0.1:18102/>, click **Connect to Chroma**, and select a collection. Browse text and metadata, expand records, or click **Vector** to inspect 2,560 values and their norm. The viewer loads at most 500 records per batch; use the top Previous/Next buttons to change batches. Table search and metadata filters apply only to the loaded batch. Query Viewer accepts numeric vectors; it does not generate embeddings from text. For natural-language retrieval, use the linked query command after stopping the viewer.
+
+```powershell
+./deploy/db-viewers/local-chroma.ps1 -Stop
+```
+
+Stop the viewer before constructing, verifying, querying from another embedded client, or replacing its vector store. Do not open multiple processes against this local Chroma directory. `-Port 18104` selects another port for both start and stop; occupied ports are rejected. PID, stop signal, and logs use `.dsh-build/local-chroma-viewer-<port>.*`. The frontend build verifies the archive checksum recorded in the DGX gateway Dockerfile and requires no Docker installation.
 
 <a id="prepare"></a>
 

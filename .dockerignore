@@ -39,6 +39,10 @@
 !deploy/
 !deploy/dgx/
 !deploy/dgx/**
+!deploy/dgx-combined/
+!deploy/dgx-combined/**
+!deploy/db-viewers/
+!deploy/db-viewers/local-chroma.py
 **/node_modules
 **/lib
 **/dist

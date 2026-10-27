@@ -8,11 +8,13 @@ description: "为 A、B 两种部署配置共享的 DGX 数据库浏览页面，
 
 ## 概要
 
-项目只有 A（DGX Harness）和 B（本地 Harness 连接 DGX）两种部署方式。两者的数据库均在 DGX，因此只部署本目录这一套可视化组件。它使用独立 Compose 项目，不修改 Harness、检索 API、数据库或模型的启动配置。
+项目只有 A（DGX Harness）和 B（本地 Harness 连接 DGX）两种部署方式。两者的数据库均在 DGX，因此只部署本目录这一套可视化组件。DGX 使用独立 Compose 项目，不修改 Harness、检索 API、数据库或模型的启动配置。下文的本地查看器用于浏览独立的开发快照。
 
 ## 目录
 
 - [组件与访问范围](#components)
+- [Windows 本地 SQLite 快照](#local)
+- [Windows 本地向量数据库](#local-vector)
 - [在 DGX 准备配置](#prepare)
 - [构建、启动与验证](#start)
 - [更新、停止与排查](#maintain)
@@ -30,6 +32,44 @@ description: "为 A、B 两种部署配置共享的 DGX 数据库浏览页面，
 两个页面使用同一份独立的 HTTP Basic 登录文件。网关只转发 SQLite 的 GET/HEAD，以及 Chroma 的读取、`get` 和 `query` 请求；创建、更新、删除、重置和其他 API 均被拒绝。登录凭据不会转发到 Chroma。服务以非 root 用户运行，根文件系统只读，日志轮转。
 
 该组件不占用 GPU，不导入或复制语料，不创建 Chroma 集合，也不重建向量。它用于查看数据；RAG 主题检索继续使用 `policy_search` 和检索 API。
+
+<a id="local"></a>
+
+## Windows 本地 SQLite 快照
+
+本地离线查看器采用相同的 Datasette 0.65.5 界面，仅绑定 `127.0.0.1:18101`，无需登录。它以 immutable 只读模式打开 `data/policy-combined-local-20261022-r2.sqlite`：2,045 份文件、187,087 个正文单元。数据库页面提供地域数量统计和带参数的标题搜索。它不连接 DGX 或 Chroma，也不改变 Harness 的数据库配置。
+
+在仓库根目录的 PowerShell 中，使用 Python 3.10 或更新版本安装一次，然后启动或停止隐藏的后台进程：
+
+```powershell
+python -m venv .dsh-build/local-db-viewer-venv
+.dsh-build/local-db-viewer-venv/Scripts/python.exe -m pip install datasette==0.65.5
+./deploy/db-viewers/local-sqlite.ps1
+./deploy/db-viewers/local-sqlite.ps1 -Stop
+```
+
+打开 <http://127.0.0.1:18101/policy-combined-local-20261022-r2>。`documents` 包含元数据和完整正文；`content_units` 包含按顺序排列的正文单元。表格可按 `region` 等字段过滤，自定义 SQL 仅允许读取。启动和停止均可用 `-Port 18103` 指定其他端口；端口被占用时拒绝启动。PID 和日志保存在 `.dsh-build/local-db-viewer-<port>.*`；停止时核实记录的进程身份。重建快照后需要重启，immutable 连接不会跟踪文件变动。
+
+<a id="local-vector"></a>
+
+## Windows 本地向量数据库
+
+本地查看器使用与 DGX 相同的固定版本 ChromaDB UI，隐藏写入控件。它仅绑定 `127.0.0.1:18102`，无需登录，打开已完成的 `data/policy-combined-local-vectors-r2` 构建：2,045 条文件向量、126,804 条正文向量。读取适配器只暴露清单中的两个集合，拒绝 API 写入。浏览已有向量无需连接 DGX，也不占用 GPU。
+
+使用[本地向量构建](../local-vectors/README.zh.md)中的 Python 环境，并安装带 npm 的 Node.js。在仓库根目录先构建一次前端，再启动隐藏的后台进程：
+
+```powershell
+.dsh-build/local-vector-venv/Scripts/python.exe -X utf8 deploy/db-viewers/build-local-chroma-ui.py
+./deploy/db-viewers/local-chroma.ps1
+```
+
+打开 <http://127.0.0.1:18102/>，点击 **Connect to Chroma**，选择集合。可以浏览文本和元数据、展开记录，或点击 **Vector** 查看 2,560 维数值及范数。每批最多加载 500 条，顶部 Previous/Next 按钮切换批次；表格搜索和元数据筛选仅作用于当前批次。Query Viewer 接受数值向量，不从文本生成向量。自然语言检索请先停止查看器，再使用所链接的查询命令。
+
+```powershell
+./deploy/db-viewers/local-chroma.ps1 -Stop
+```
+
+构建、验证、从其他嵌入式客户端查询或替换向量库前，先停止查看器。不要让多个进程同时打开这个本地 Chroma 目录。启动和停止均可用 `-Port 18104` 指定其他端口，端口被占用时拒绝启动。PID、停止信号和日志使用 `.dsh-build/local-chroma-viewer-<port>.*`。前端构建会校验 DGX 网关 Dockerfile 中记录的压缩包哈希，无需安装 Docker。
 
 <a id="prepare"></a>
 

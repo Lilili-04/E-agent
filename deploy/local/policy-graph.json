@@ -1,0 +1,11 @@
+{
+  "databaseSha256": "ce72246795fedf9b6a285be8328a186ebfcdb229dbd4f68579193b23eba506ef",
+  "timeoutMs": 15000,
+  "versionLimit": 8,
+  "snapshot": "../policy-graph-pilot/data/graphiti-combined-v4/graph.json",
+  "snapshotSha256": "66316d8528387ad6f2a19f3aa98f812e86c6063ea4bd3e7e30ee08588658fd20",
+  "endpoint": "http://127.0.0.1:17475/db/neo4j/tx/commit",
+  "eventLimit": 30,
+  "group": "policy-combined-v4",
+  "contextCharacters": 18000
+}
