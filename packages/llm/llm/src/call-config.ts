@@ -27,6 +27,8 @@ export interface LlmCallConfig {
   temperature?: number
   maxTokens?: number
   stop?: string[]
+  /** Require one named tool for this request; omit to let the model choose. */
+  requiredTool?: string
 }
 
 /**
@@ -53,6 +55,7 @@ export function callConfigEquals(a: LlmCallConfig, b: LlmCallConfig): boolean {
     || a.reasoningEffort !== b.reasoningEffort
     || a.temperature !== b.temperature
     || a.maxTokens !== b.maxTokens
+    || a.requiredTool !== b.requiredTool
   ) return false
   if (a.stop === undefined || b.stop === undefined) return a.stop === b.stop
   return a.stop.length === b.stop.length && a.stop.every((s, i) => s === b.stop?.[i])

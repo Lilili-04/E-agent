@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write deploy/local-vectors/README.md
+/:
+  en: b5b883600ee3ec4f
+  zh: 490659df86ebc0a2
+/local-policy-vectors:
+  en: 874ae97aa64e335f
+  zh: bc4afce29b857d20
+/local-policy-vectors/summary:
+  en: 2dbf466df124bf67
+  zh: e518514a6ba63597
+/local-policy-vectors/table-of-contents:
+  en: fc0e7f2d6d14668c
+  zh: 5448bf6298686914
+/local-policy-vectors/prerequisites-and-build:
+  en: a312ad7af91871b6
+  zh: 5589ae5e11f36959
+/local-policy-vectors/verification-and-queries:
+  en: 9ebf3db15075c923
+  zh: afd76afa18af9e09
+/local-policy-vectors/local-harness-chain:
+  en: 6e4ea5a6eb74c1dc
+  zh: d58e167f236702ba
+/local-policy-vectors/reuse-and-recovery:
+  en: 9c0eaac644210e6b
+  zh: 649f279ed62218f2
+/local-policy-vectors/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

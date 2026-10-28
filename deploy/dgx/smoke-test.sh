@@ -22,6 +22,10 @@ cleanup() {
     fi
     compose down --timeout 20 >/dev/null 2>&1 || true
     docker network rm "$project" >/dev/null 2>&1 || true
+    # Reclaim only this private fixture tree when the runtime UID differs from the host runner.
+    docker run --rm --network none --user 0:0 --entrypoint chown \
+        --mount "type=bind,src=$root,dst=/smoke-fixture" "$image" \
+        -R "$(id -u):$(id -g)" /smoke-fixture
     rm -rf -- "$root"
     exit "$status"
 }

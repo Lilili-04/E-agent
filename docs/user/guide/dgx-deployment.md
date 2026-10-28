@@ -1,5 +1,7 @@
 # Run the environment-policy Harness on DGX
 
+For the current national/provincial combined deployment, use the [combined DGX guide](../../../deploy/dgx-combined/README.md). This page describes the earlier national-only deployment.
+
 English | [中文](dgx-deployment.zh.md)
 
 The new Harness container executes retrieval directly, mounting host SQLite read-only. Chroma, embedding and answer models remain separate. Configuration lives in [deploy/dgx](../../../deploy/dgx), with the preset in [environment-policy-dgx.patch.yml](../../../apps/cli/config/examples/environment-policy-dgx.patch.yml).

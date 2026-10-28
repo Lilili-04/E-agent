@@ -206,6 +206,9 @@ export interface PreparedAdapterCall {
  * DeepSeek and library-backed pi-ai adapters meet this contract through different internals.
  */
 export abstract class LlmAdapter {
+  /** Opt in only when unsupported required-tool requests are rejected before dispatch. */
+  readonly supportsRequiredTool: boolean = false
+
   /**
    * Describe one provider route owned by this adapter.
    * @param provider - a route passed to `registerAdapter()` for this instance.
@@ -1038,6 +1041,9 @@ export class LlmRuntime extends TypertRemoteService {
     try {
       const registration = prepared?.registration ?? this.registration(options.provider)
       const adapter = registration.adapter
+      if (options.requiredTool && !adapter.supportsRequiredTool) {
+        throw new LlmError('Adapter does not support requiredTool', 'UNSUPPORTED_TOOL_CHOICE')
+      }
       let modelInfo: LlmResolvedModelInfo
       let resolvedConfig: LlmCallConfig
       let dispatch: (options: GenerateOptions) => AsyncIterable<StreamChunk>

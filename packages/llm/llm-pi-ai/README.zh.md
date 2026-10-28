@@ -177,6 +177,10 @@ Config 更新严格验证发生变化的 provider。初始加载将已存储的�
 -----
 
 <a id="model-experience"></a>
+## 必需工具请求
+
+requiredTool支持带有对应工具声明的openai-completions路由。适配器通过SDK请求体钩子映射为指定函数的tool_choice；其他协议拒绝此请求控制。调用方仍需核验服务端是否遵循。
+
 ## 模型体验
 
 ### 经 pi-ai 的提供方请求

@@ -622,6 +622,8 @@ interface GenerateOptions {
   system?: string
   /** Tool schemas (adapters map to the provider's `tools` field). */
   tools?: ToolSchema[]
+  /** Require this declared tool. Unsupported adapters must reject the request. */
+  requiredTool?: string
   /** Session-folded tool history used for route projection; omission sends complete declarations without tool updates. */
   toolHistory?: ToolHistory
   temperature?: number
@@ -764,6 +766,8 @@ interface LlmCallConfig {
   temperature?: number
   maxTokens?: number
   stop?: string[]
+  /** Require one named tool for this request; omit to let the model choose. */
+  requiredTool?: string
 }
 ```
 
@@ -824,6 +828,8 @@ interface PreparedLlmCall {
  * DeepSeek and library-backed pi-ai adapters meet this contract through different internals.
  */
 declare abstract class LlmAdapter {
+  /** Opt in only when unsupported required-tool requests are rejected before dispatch. */
+  readonly supportsRequiredTool: boolean;
   /**
    * Describe one provider route owned by this adapter.
    * @param provider - a route passed to `registerAdapter()` for this instance.

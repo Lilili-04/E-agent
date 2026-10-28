@@ -528,6 +528,8 @@ export interface GenerateOptions {
   system?: string
   /** Tool schemas (adapters map to the provider's `tools` field). */
   tools?: ToolSchema[]
+  /** Require this declared tool. Unsupported adapters must reject the request. */
+  requiredTool?: string
   /** Session-folded tool history used for route projection; omission sends complete declarations without tool updates. */
   toolHistory?: ToolHistory
   temperature?: number

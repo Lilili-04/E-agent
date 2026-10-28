@@ -73,3 +73,13 @@ describe('pi-ai SDK retry boundary', () => {
     })
   })
 })
+
+
+it('passes a required named tool to the OpenAI-compatible SDK', async () => {
+  streamSimple.mockImplementation(() => { throw new Error('mock SDK boundary') })
+  const adapter = gatewayAdapter()
+  for await (const _chunk of adapter.stream({ provider: 'local-gateway', model: 'local-model', messages: [],
+    requiredTool: 'policy_search', tools: [{ name: 'policy_search', description: 'Search sources', parameters: { type: 'object' } }] })) { /* drain */ }
+  const hook = streamSimple.mock.calls[0]?.[2]?.onPayload
+  expect(hook({ model: 'local-model' })).toEqual({ model: 'local-model', tool_choice: { type: 'function', function: { name: 'policy_search' } } })
+})

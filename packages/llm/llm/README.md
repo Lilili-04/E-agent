@@ -139,6 +139,10 @@ Read these pages when the package-level contract is not enough. They move from t
 -----
 
 <a id="model-experience"></a>
+## Required tool requests
+
+The optional request configuration field requiredTool names a declared tool that must be called. It is recorded in request headers and participates in configuration equality. Adapters without support reject the request instead of silently ignoring it.
+
 ## Model Experience
 
 None, as the LLM service adds no content; adapters choose when to add the shared image descriptors and per-image placeholders exported by this package.

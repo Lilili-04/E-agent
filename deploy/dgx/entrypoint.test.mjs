@@ -15,7 +15,7 @@ async function fixture(run) {
     const bin = join(root, 'bin')
     await mkdir(bin)
     const stub = join(bin, 'node')
-    await writeFile(stub, '#!/bin/sh\n[ "$DGX_QWEN38_API_KEY" = "$EXPECTED_KEY" ] || exit 9\nprintf "%s\\n" "$@" > "$ARGS_OUTPUT"\n', { mode: 0o700 })
+    await writeFile(stub, '#!/bin/sh\n[ "$DGX_QWEN36_API_KEY" = "$EXPECTED_KEY" ] || exit 9\nprintf "%s\\n" "$@" > "$ARGS_OUTPUT"\n', { mode: 0o700 })
     const policy = join(root, 'policy-token')
     const model = join(root, 'model-key')
     await writeFile(policy, 'keyless-policy-token', { mode: 0o600 })

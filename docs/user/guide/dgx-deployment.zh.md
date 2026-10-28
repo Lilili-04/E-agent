@@ -1,5 +1,7 @@
 # 在 DGX 上运行环境政策法规 Harness
 
+当前全国与省级合并部署请使用[合并版 DGX 指南](../../../deploy/dgx-combined/README.zh.md)。本页描述早期国家级部署。
+
 [English](dgx-deployment.md) | 中文
 
 新版由 Harness 容器直接执行检索，SQLite 从宿主机只读挂载，Chroma、Embedding、问答模型分别维护。配置位于 [deploy/dgx](../../../deploy/dgx)，预设位于 [environment-policy-dgx.patch.yml](../../../apps/cli/config/examples/environment-policy-dgx.patch.yml)。

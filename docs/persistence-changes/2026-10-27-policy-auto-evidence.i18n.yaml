@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-27-policy-auto-evidence.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-10-27-policy-auto-evidence.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-10-27-policy-auto-evidence:
+  en: 4398bed0e9381ca5
+  zh: 15e5d611a51b4951
+/2026-10-27-policy-auto-evidence/summary:
+  en: 1336da6071d2b89d
+  zh: 950a043326b1ad17
+/2026-10-27-policy-auto-evidence/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-10-27-policy-auto-evidence/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-10-27-policy-auto-evidence/compatibility:
+  en: 8d159d46d0dfdfdc
+  zh: 15df3d8da165bd11
+/2026-10-27-policy-auto-evidence/verification:
+  en: 234207ee786ced37
+  zh: 5362ec6acc93efcb
+/2026-10-27-policy-auto-evidence/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

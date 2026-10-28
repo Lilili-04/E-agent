@@ -38,6 +38,47 @@ async function fixture() {
 }
 
 describe('policy v2 source retrieval', () => {
+  it('keeps unscoped topics national and combines only the named catalog provinces', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'policy-v2-regions-')); roots.push(dir)
+    const path = join(dir, 'regions.sqlite')
+    PolicyV2Database.create(path, [
+      doc('national', '污染管理办法', '第一条 废水禁止直接排入河道，应当处理。\n', '废水排入河道'),
+      { ...doc('js', '江苏省污染管理办法', '第一条 废水禁止直接排入河道，应当处理。\n', '废水排入河道'), region: '江苏省' },
+      { ...doc('zj', '浙江省污染管理办法', '第一条 废水禁止直接排入河道，应当处理。\n', '废水排入河道'), region: '浙江省' },
+      ...Array.from({ length: 12 }, (_, i) => doc(`national-${i}`, `全国废水文件${i}`,
+        `第一条 废水禁止直接排入河道，要求${i}。\n`, '废水排入河道')),
+    ])
+    const ctx = new Context()
+    try {
+      await ctx.plugin(PolicyV2Service, { path })
+      const search = (question: string, region?: string, region_mode?: 'applicable' | 'only') => ctx.environmentPolicyV2.search({
+        question, target: 'passages', ...(region ? { region } : {}), ...(region_mode ? { region_mode } : {}),
+      })
+      const ids = (result: Awaited<ReturnType<typeof search>>) => result.passages.map(p => p.document_id).sort()
+      expect((await search('废水排入河道')).passages.every(p => p.document.region === '全国')).toBe(true)
+      expect(ids(await search('江苏废水排入河道'))).toContain('js')
+      expect(ids(await search('废水排入河道', '江苏'))).toContain('js')
+      expect((await search('江苏废水排入河道')).passages.some(p => p.document.region === '全国')).toBe(true)
+      expect(ids(await search('废水排入河道', '江苏省', 'only'))).toEqual(['js'])
+      expect(ids(await search('只查江苏的废水排入河道'))).toEqual(['js'])
+      const planned = await ctx.environmentPolicyV2.search({ question: '废水排入河道', mode: 'facts',
+        scope_question: '只查江苏的废水排入河道' })
+      expect(ids(planned)).toEqual(['js'])
+      expect((await ctx.environmentPolicyV2.search({ question: '污水', mode: 'documents' })).target).toBe('documents')
+      const explicitFacts = await ctx.environmentPolicyV2.search({ question: '介绍一下废水排入河道', mode: 'facts' })
+      expect(explicitFacts.target).toBe('passages')
+      expect(explicitFacts.requires_full_read).toBe(false)
+      expect(ids(await search('江苏和浙江的废水排入河道'))).toEqual(expect.arrayContaining(['js', 'zj']))
+      await expect(search('废水排入河道', '不存在省')).rejects.toThrow('Unknown region')
+      const exact = await ctx.environmentPolicyV2.search({ question: '《浙江省污染管理办法》第一条' })
+      expect(exact.passages.map(p => p.document_id)).toEqual(['zj'])
+      const wrong = await ctx.environmentPolicyV2.search({ question: '《浙江省污染管理办法》第一条', region: '江苏省', region_mode: 'only' })
+      expect(wrong.passages).toEqual([])
+      await expect(ctx.environmentPolicyV2.search({ question: '废水排入河道', document_id: 'zj',
+        region: '江苏省', region_mode: 'only' })).rejects.toThrow('outside the selected region')
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('keeps articles, inserted articles and all original characters across Markdown variants', () => {
     const text = '# 法律\r\n\r\n第一章 总则\r\n第二条正文\r\n下一款。\r\n\r\n## 第二条之一插入条款\r\n第三条 末条\n'
     const units = sourceUnits('law', text)
@@ -197,12 +238,26 @@ describe('policy v2 source retrieval', () => {
       await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
       await ctx.loader.await()
       expect(ctx.tools.schemas().map(s => s.name)).toEqual(['policy_search', 'policy_read'])
+      const agent = {} as NonNullable<ToolExecutionInput['agent']>
+      const signal = new AbortController().signal
+      const request = () => ctx.waterfall('agent/request', { agent, turn: 1, step: 1, signal },
+        async () => ({ provider: 'test', model: 'test' }))
+      expect(await request()).not.toHaveProperty('requiredTool')
+      const read = vi.spyOn(ctx.environmentPolicyV2, 'read')
+      const invalid = await ctx.tools.execute({ name: 'policy_read', arguments: { document_id: 'water', version_id: 'water' },
+        callId: ToolCallId('invalid-version'), signal, agent })
+      expect(invalid.isError).toBe(true)
+      expect(read).not.toHaveBeenCalled()
+      await ctx.tools.execute({ name: 'policy_search', arguments: { question: '水土保持' },
+        callId: ToolCallId('required-search'), signal, agent })
+      expect(await request()).not.toHaveProperty('requiredTool')
+
       const result = await ctx.tools.execute({ name: 'policy_read', arguments: { document_id: 'water', scope: 'article', selector: '第26条' },
-        callId: ToolCallId('policy-v2-read'), signal: new AbortController().signal })
+        callId: ToolCallId('policy-v2-read'), signal: new AbortController().signal, agent })
       expect(result.isError).toBe(false)
       const text = result.content.find(block => block.type === 'text')
       if (text?.type !== 'text') throw new Error('Missing source evidence')
-      const data = JSON.parse(text.text)
+      const data = JSON.parse(text.text) as Record<string, unknown>
       expect({ citation_id: data.citation_id, text: data.text, scope: data.scope,
         found: data.found, has_more: data.has_more, source_complete: data.source_complete })
         .toMatchInlineSnapshot(`
