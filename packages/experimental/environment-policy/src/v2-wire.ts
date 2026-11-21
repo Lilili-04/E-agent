@@ -66,8 +66,10 @@ export function searchRequest(value: unknown): PolicyV2SearchRequest {
 export function readRequest(value: unknown): PolicyV2ReadRequest {
   if (!record(value) || typeof value.document_id !== 'string' || !value.document_id || !optionalStrings(value, ['selector', 'cursor', 'version_id']) ||
     value.scope !== undefined && value.scope !== 'full' && value.scope !== 'section' && value.scope !== 'article' ||
-    (value.scope === 'section' || value.scope === 'article') && typeof value.selector !== 'string') throw new Error('Invalid read request')
-  return { document_id: value.document_id, ...(typeof value.version_id === 'string' ? { version_id: value.version_id } : {}), ...(value.scope === undefined ? {} : { scope: value.scope }),
+    (value.scope === 'section' || value.scope === 'article') && typeof value.selector !== 'string' ||
+    (value.line_start !== undefined || value.line_end !== undefined) &&
+      (!integer(value.line_start) || !integer(value.line_end) || value.line_start < 1 || value.line_end < value.line_start)) throw new Error('Invalid read request')
+  return { document_id: value.document_id, ...(typeof value.line_start === 'number' && typeof value.line_end === 'number' ? { line_start: value.line_start, line_end: value.line_end } : {}), ...(typeof value.version_id === 'string' ? { version_id: value.version_id } : {}), ...(value.scope === undefined ? {} : { scope: value.scope }),
     ...(typeof value.selector === 'string' ? { selector: value.selector } : {}), ...(typeof value.cursor === 'string' ? { cursor: value.cursor } : {}) }
 }
 

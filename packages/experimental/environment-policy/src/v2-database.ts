@@ -45,6 +45,8 @@ export interface PolicyV2ReadRequest {
   scope?: 'full' | 'section' | 'article'
   selector?: string
   cursor?: string
+  line_start?: number
+  line_end?: number
 }
 
 /** Full-source completeness and page completeness are independent. */
@@ -248,7 +250,15 @@ export class PolicyV2Database {
     if (scope !== 'full' && !request.selector) throw new Error('section/article requires selector')
     const requestedSelector = request.selector ?? ''
     let units = this.sql.prepare('SELECT * FROM content_units WHERE document_id=? ORDER BY sequence').all(doc.id).map(sourceRow)
-    const ranges = selection?.ranges
+    const lineStart = request.line_start; const lineEnd = request.line_end
+    if ((lineStart !== undefined || lineEnd !== undefined) &&
+      (lineStart === undefined || lineEnd === undefined || !Number.isSafeInteger(lineStart) || !Number.isSafeInteger(lineEnd) ||
+        lineStart < 1 || lineEnd < lineStart)) throw new Error('Invalid original line range')
+    const requestedRange = lineStart !== undefined && lineEnd !== undefined ? { start: lineStart, end: lineEnd } : undefined
+    const ranges = requestedRange && selection?.ranges ? selection.ranges.flatMap((range) => {
+      const start = Math.max(range.start, requestedRange.start); const end = Math.min(range.end, requestedRange.end)
+      return start <= end ? [{ start, end }] : []
+    }) : requestedRange ? [requestedRange] : selection?.ranges
     if (ranges) units = units.flatMap((unit) => {
       const lines = unit.text.match(/[^\n]*\n|[^\n]+$/gu) ?? []
       const kept = lines.map((text, index) => ({ text, line: unit.line_start + index })).filter(line =>
@@ -278,7 +288,7 @@ export class PolicyV2Database {
       if (ranges.length > 1) throw new Error('Section selector is ambiguous; read full text or specify the complete heading')
       units = ranges[0] ?? []
     }
-    const identity = createHash('sha256').update(JSON.stringify([doc.id, doc.source_hash, scope, request.selector ?? '', selection ?? null])).digest('hex')
+    const identity = createHash('sha256').update(JSON.stringify([doc.id, doc.source_hash, scope, request.selector ?? '', selection ?? null, request.line_start ?? null, request.line_end ?? null])).digest('hex')
     let offset = 0
     let within = 0
     if (request.cursor) {

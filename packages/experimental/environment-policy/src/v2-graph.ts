@@ -1,7 +1,7 @@
 /** Read-only, snapshot-bound version and event enrichment inside the existing provider. */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { policyTitleMatches } from './v2-title-matches.ts'
+import { policyTitleMatches, resolvePolicyShortTitle } from './v2-title-matches.ts'
 import { canonical, type PolicyV2Database, type PolicyV2ReadRequest, type PolicyV2ReadResult } from './v2-database.ts'
 
 interface Ref {
@@ -98,8 +98,7 @@ export interface GraphEvent {
   review_reason: string
   sources: Ref[]
 }
-/** Bounded one-hop history
-  an absent event never establishes present validity. */
+/** Bounded one-hop history with explicit truncation and source gaps. */
 export interface GraphContext {
   identity_matched: boolean
   selected_version_ids: string[]
@@ -139,6 +138,7 @@ function snapshot(value: unknown): asserts value is Snapshot {
 export class PolicyV2Graph {
   private readonly data: Snapshot
   private readonly settings: Settings
+  private readonly excludedDocuments: Set<string>
   private verified = false
   private readonly owners = new Map<string, Regulation>()
 
@@ -151,6 +151,11 @@ export class PolicyV2Graph {
       timeoutMs: Number(settings.timeoutMs),
       versionLimit: Number(settings.versionLimit), eventLimit: Number(settings.eventLimit),
       contextCharacters: Number(settings.contextCharacters) }
+    const excluded = settings.excludedDocumentIds ?? []
+    if (!Array.isArray(excluded) || !excluded.every(id => typeof id === 'string' && !database.document(id))) {
+      throw new Error('Invalid excluded graph document IDs')
+    }
+    this.excludedDocuments = new Set(excluded.filter((id): id is string => typeof id === 'string'))
     const url = new URL(this.settings.endpoint)
     if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || url.username || url.password) {
       throw new Error('Graph endpoint must be local HTTP')
@@ -166,7 +171,7 @@ export class PolicyV2Graph {
       this.owners.set(r.to, owner)
     }
     for (const v of data.versions) {
-      if (!this.owners.has(v.id) || v.document_ids.some(id => !database.document(id))) {
+      if (!this.owners.has(v.id) || v.document_ids.some(id => !database.document(id) && !this.excludedDocuments.has(id))) {
         throw new Error('Graph references unavailable body/owner')
       }
     }
@@ -235,7 +240,7 @@ export class PolicyV2Graph {
   }
 
   private card(v: Version, documentId?: string): GraphVersion {
-    const direct = v.document_ids.filter(id => !documentId || id === documentId)
+    const direct = v.document_ids.filter(id => !this.excludedDocuments.has(id) && (!documentId || id === documentId))
     const evidence = this.validRefs(refs(v.evidence_refs), documentId)
     return { id: v.id, title: v.title, version_label: v.version_label, document_number: v.document_number,
       publish_date: v.publish_date, revision_date: v.revision_date, effective_date: v.effective_date,
@@ -258,30 +263,37 @@ export class PolicyV2Graph {
     const normalized = canonical(question)
     const candidates = this.data.versions.filter(v => regions.includes((this.owners.get(v.id)?.region ?? '')) &&
       (!documentId || v.document_ids.includes(documentId)))
+    const shortTitle = resolvePolicyShortTitle(normalized, [...new Set(candidates.map(v => canonical(this.owners.get(v.id)?.title ?? '')))])
+    const resolvedQuestion = shortTitle ? normalized + shortTitle : normalized
     const identified = candidates.filter(v => v.document_number && normalized.includes(canonical(v.document_number)))
-    const named = identified.length ? identified : policyTitleMatches(normalized, candidates, v =>
+    const named = identified.length ? identified : policyTitleMatches(resolvedQuestion, candidates, v =>
       [(this.owners.get(v.id)?.title ?? ''), ...(this.owners.get(v.id)?.aliases ?? []), v.title]
         .map(title => canonical(title).replace(/^中华人民共和国/u, '').replace(/\(试行\)$/u, '')))
     const identityMatched = named.length > 0 || !!documentId && candidates.length > 0
     let selected = named.length ? named : candidates.filter(v => v.document_ids.some(id => documentIds.includes(id)))
-    const year = question.match(/((?:19|20)\d{2})(?:年?(?:版|修订|修正|发布|公布)|年)/u)?.[1]
-    if (year) selected = selected.filter(v => [v.publish_date, v.revision_date, v.adoption_date, v.version_label, v.title]
-      .some(text => text?.includes(year)))
+    const versionQuestion = question.replace(/(?:19|20)\d{2}[年/-]\d{1,2}[月/-]\d{1,2}(?!\d|日?\s*版)日?/gu, '')
+    const years = [...versionQuestion.matchAll(/((?:19|20)\d{2})(?:年?(?:版|修订|修正|发布|公布)|年)/gu)].map(match => match[1] ?? '')
+    if (years.length) selected = selected.filter(v => [v.publish_date, v.revision_date, v.adoption_date, v.version_label, v.title]
+      .some(text => years.some(year => text?.includes(year))))
     const truncated = selected.length > this.settings.versionLimit
     selected = selected.slice(0, this.settings.versionLimit)
     const ids = new Set(selected.map(v => v.id))
     const regulationIds = new Set(selected.map(v => this.owners.get(v.id)?.id))
     const history = /废止|修订|修正|沿革|版本|替代|效力|现行|有效|施行|生效/u.test(question)
-    const events = this.data.relations.filter(r => r.type !== 'HAS_VERSION' && (ids.has(r.from) || ids.has(r.to) || regulationIds.has(r.to)) &&
+    const eventInYear = (r: Relation) => !years.length ||
+      [r.date, this.data.versions.find(v => v.id === r.from)?.title].some(value => years.some(year => value?.includes(year)))
+    const events = this.data.relations.filter(r => r.type !== 'HAS_VERSION' && (ids.has(r.from) || ids.has(r.to) ||
+      regulationIds.has(r.to) && eventInYear(r)) &&
+      (!r.source_refs.length || r.source_refs.some(ref => !this.excludedDocuments.has(ref.document_id))) &&
       candidates.some(v => v.id === r.from) &&
       (candidates.some(v => v.id === r.to) || this.data.regulations.some(v => v.id === r.to && regions.includes(v.region))))
     const limited = history ? events.slice(0, this.settings.eventLimit) : []
     const endpoints = new Set(limited.flatMap(r => [r.from, r.to]))
     const versions = candidates.filter(v => ids.has(v.id) || endpoints.has(v.id)).map(v => this.card(v, documentId))
-    const warnings = ['沿革仅反映已收录事件；没有废止关系不等于现行有效。未知日期不得推算，部分修改不等于整部废止。']
-    if (history && !limited.length) warnings.push('未找到可验证的相关沿革事件；不能据此作效力结论。')
+    const warnings = ['沿革仅反映已收录事件。未知日期不得推算，部分修改不等于整部废止。']
+    if (history && !limited.length) warnings.push('未找到可验证的相关沿革事件。')
     if (limited.some(r => this.validRefs(r.source_refs, documentId).length < r.source_refs.length)) warnings.push('部分沿革依据不在当前正文快照或指定范围内，未提供读取入口。')
-    if (identityMatched && year && !selected.length) warnings.push('已识别法规，但指定年份版本未收录；不能使用其他年份正文替代。')
+    if (identityMatched && years.length && !selected.length) warnings.push('已识别法规，但指定年份版本未收录；不能使用其他年份正文替代。')
     const result: GraphContext = { identity_matched: identityMatched, selected_version_ids: [...ids], versions,
       events: limited.map(r => ({ id: r.id, type: r.type,
         issuing_version_id: r.from, target_version_id: r.to.startsWith('ver-') ? r.to : null,

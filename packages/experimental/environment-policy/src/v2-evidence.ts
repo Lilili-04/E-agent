@@ -1,14 +1,16 @@
 /** Backend retrieval and bounded original-source preparation before generation. */
+import { assessPolicyValidity, type PolicyValidity } from './v2-validity.ts'
 import type { DocumentCard, PolicyV2ReadRequest } from './v2-database.ts'
 import type { PolicyV2Knowledge, PolicyV2SearchResult, PolicyV2SearchRequest } from './v2-service.ts'
 
 /** Deployment limits apply to retrieval, sequential reading and the complete serialized packet. */
-export interface EvidenceSettings { characters: number; pages: number; documents: number; timeoutMs: number }
+export interface EvidenceSettings { characters: number; pages: number; documents: number; timeoutMs: number; asOf?: string }
 /** Prepared evidence remains separate from discovery metadata and graph claims. */
 export interface PolicyEvidence {
   status: 'ready' | 'empty' | 'unavailable'
   question: string
   route: string
+  validity?: PolicyValidity
   diagnostics?: PolicyV2SearchResult['diagnostics']
   graph?: PolicyV2SearchResult['graph']
   sources: Array<{
@@ -45,6 +47,7 @@ export async function preparePolicyEvidence(knowledge: PolicyV2Knowledge, questi
   const size = () => JSON.stringify(evidence).length
   function append(source: PolicyEvidence['sources'][number]): boolean {
     if (!source.text.trim()) return true
+    if (source.text_role === 'history_evidence' && evidence.sources.some(previous => previous.document.id === source.document.id && previous.text === source.text)) return true
     evidence.sources.push(source)
     if (size() <= settings.characters) return true
     evidence.sources.pop()
@@ -83,13 +86,26 @@ export async function preparePolicyEvidence(knowledge: PolicyV2Knowledge, questi
     }
     const documents = [...new Map([...search.documents, ...search.passages.map(p => p.document)]
       .map(doc => [doc.id, doc])).values()].slice(0, settings.documents)
+    // Identity and decisive event originals take priority over repeated historical body reads.
+    if (search.graph?.identity_matched) {
+      const seenEvents = new Set<string>()
+      for (const event of [...search.graph.events].sort((a, b) => Number(b.type === 'REPEALS') - Number(a.type === 'REPEALS'))) {
+        for (const source of event.sources) {
+          const key = JSON.stringify([source.document_id, source.line_start, source.line_end])
+          if (seenEvents.has(key)) continue
+          seenEvents.add(key)
+          if (seenEvents.size <= settings.documents) await read({ document_id: source.document_id,
+            line_start: source.line_start, line_end: source.line_end }, true, 'history_evidence')
+        }
+      }
+    }
     if (search.requires_full_read) {
       const selected = search.graph?.versions.filter(v => search?.graph?.selected_version_ids.includes(v.id)) ?? []
       const attachments = selected.flatMap(v => v.read_sources.filter(s => s.purpose === 'attachment'))
       for (const doc of documents.filter(d => !attachments.some(a => a.document_id === d.id))) {
         await read({ document_id: doc.id, scope: 'full' }, true)
       }
-      for (const source of attachments.slice(0, settings.documents)) await read({ ...source, scope: 'full' }, true)
+      for (const source of attachments.slice(0, settings.documents)) await read({ document_id: source.document_id, version_id: source.version_id, scope: 'full' }, true)
     } else if (search.passages.length) {
       const seen = new Set<string>()
       const complete = new Set<string>()
@@ -124,26 +140,17 @@ export async function preparePolicyEvidence(knowledge: PolicyV2Knowledge, questi
     } else if (!search.graph) {
       for (const doc of documents) await read({ document_id: doc.id, scope: 'full' }, false)
     }
-    if (search.graph?.identity_matched) {
+    if (search.graph?.identity_matched && !assessPolicyValidity(question, undefined, [], settings.asOf)) {
       const seen = new Set<string>()
       for (const version of search.graph.versions.filter(v => search?.graph?.selected_version_ids.includes(v.id))) {
         for (const source of version.read_sources) {
-          const key = JSON.stringify([source.document_id, source.version_id])
+          const key = JSON.stringify([source.document_id, source.purpose === 'body' ? 'body' : [source.line_start, source.line_end]])
           if (seen.has(key)) continue
           seen.add(key)
-          if (seen.size <= settings.documents) await read({ ...source, scope: 'full' }, true)
+          if (seen.size <= settings.documents) await read({ document_id: source.document_id, version_id: source.version_id, scope: 'full' }, true)
         }
       }
-      for (const event of search.graph.events) {
-        const selector = event.evidence.match(/第[零〇一二三四五六七八九十百千万两\d]+条(?:之[零〇一二三四五六七八九十百千万两\d]+)?/u)?.[0]
-        for (const source of event.sources) {
-          const key = JSON.stringify([source.document_id, source.unit_id, selector])
-          if (seen.has(key)) continue
-          seen.add(key)
-          if (seen.size <= settings.documents) await read({ document_id: source.document_id,
-            ...(selector ? { scope: 'article', selector } : { scope: 'full' }) }, true, 'history_evidence')
-        }
-      }
+
     }
   } catch (error) {
     signal.throwIfAborted()
@@ -164,5 +171,9 @@ export async function preparePolicyEvidence(knowledge: PolicyV2Knowledge, questi
     evidence.question = ''
     evidence.warnings = ['用户问题超过证据包长度上限；请依据原始问题，当前无可用原文。']
   }
+  const validity = assessPolicyValidity(question, evidence.graph, evidence.sources, settings.asOf)
+  if (validity) evidence.validity = validity
+  while (size() > settings.characters && evidence.sources.length > 1) evidence.sources.pop()
+  if (size() > settings.characters) { delete evidence.validity; evidence.sources = []; evidence.status = 'empty' }
   return { text: JSON.stringify(evidence), evidence, read_pages: pages, ...(search ? { search } : {}) }
 }

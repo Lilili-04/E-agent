@@ -8,19 +8,22 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionInput } from '@deepseek-ai/dsh-tools'
-import LlmRuntime, { LlmAdapter, createUserMessage, ToolCallId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { LlmAdapter, createUserMessage, ToolCallId, type GenerateOptions, type UserMessage, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { afterEach, expect, it, vi } from 'vitest'
 import { PolicyV2Database, type PolicyDocument } from '../src/v2-database.ts'
 import Service from '../src/v2-service.ts'
 import type { PolicyEvidence } from '../src/v2-evidence.ts'
 import * as Tools from '../src/v2-tools.ts'
+import { assessPolicyValidity } from '../src/v2-validity.ts'
+import { registerOriginal, sourceAnswerIssue, renderSourceAnswer, sourceFailureAnswer, type ModelSource } from '../src/v2-model-sources.ts'
+import { modelAnswerIssue } from '../src/v2-model-tools.ts'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { planningPrompt, type PlannedEvidence } from '../src/v2-plan.ts'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
 
-async function fixture(planning = false) {
+async function fixture(planning = false, model = false) {
   const root = await mkdtemp(join(tmpdir(), 'policy-answer-guard-')); roots.push(root)
   const path = join(root, 'body.sqlite')
   const docs: PolicyDocument[] = ['short', 'long', 'old'].map((id) => {
@@ -38,7 +41,7 @@ async function fixture(planning = false) {
       document_ids: [d.id], all_document_ids: [d.id], source_text_status: 'complete', status: 'ready' })) }))
   const config = join(root, 'cordis.yml')
   await writeFile(config, [...planning ? ['- name: cordis:llm', '- name: cordis:sessions'] : [], '- name: cordis:prompt', '- name: cordis:tools', '- name: cordis:policy',
-    `  config: ${JSON.stringify({ path, latestManifestPath: latest, pageCharacters: 200 })}`, '- name: cordis:policy-tools', ...planning ? ['  config: { planningProvider: test, planningModel: fixture }'] : [], ''].join('\n'))
+    `  config: ${JSON.stringify({ path, latestManifestPath: latest, pageCharacters: 200 })}`, '- name: cordis:policy-tools', ...planning ? ['  config: { planningProvider: test, planningModel: fixture }'] : model ? ['  config: { retrievalMode: model }'] : [], ''].join('\n'))
   const ctx = new Context()
   await ctx.plugin(Loader)
   Object.assign(ctx.loader.builtins, { include: Include, prompt: SystemPrompt, tools: ToolRuntime, policy: Service, 'policy-tools': Tools,
@@ -190,5 +193,186 @@ it('loads the model planner, logs exact auxiliary inputs before dispatch and ent
     expect(events.filter(e => e.type === 'policy/retrieval-model').map(e =>
       e.data && typeof e.data === 'object' && 'phase' in e.data ? e.data.phase : undefined))
       .toEqual(['request', 'response', 'request', 'response'])
+  } finally { await f.ctx.fiber.dispose() }
+})
+
+it('checks an actual model stream after Loader admission and suppresses an unsupported validity claim', async () => {
+  const f = await fixture()
+  try {
+    await f.prepare('《未收录法规》现行有效吗？')
+    await f.request()
+    const chunks: StreamChunk[] = [ { type: 'block-start', index: 0, blockType: 'text' },
+      { type: 'text-delta', index: 0, text: '该法现行有效。' },
+      { type: 'block-end', index: 0, block: { type: 'text', text: '该法现行有效。' } },
+      { type: 'finish', reason: { kind: 'stop' } } ]
+    const visible: StreamChunk[] = []
+    for await (const chunk of f.stream(chunks)) visible.push(chunk)
+    const answer = visible.flatMap(c => c.type === 'text-delta' ? [c.text] : []).join('')
+    expect(answer).toContain('尚不能确认')
+    expect(answer).toContain('法规名称未唯一匹配')
+    expect(answer).not.toContain('该法现行有效。')
+  } finally { await f.ctx.fiber.dispose() }
+})
+
+
+it('model mode does not retrieve on admission and permits the first model request without evidence', async () => {
+  const f = await fixture(false, true)
+  try {
+    const search = vi.spyOn(f.ctx.environmentPolicyV2, 'search')
+    const read = vi.spyOn(f.ctx.environmentPolicyV2, 'read')
+    const decision = await f.prepare('你好')
+    if (decision.kind !== 'enter') throw new Error('Expected admitted step')
+    expect(decision.messages).toHaveLength(1)
+    expect(search).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled()
+    expect(await f.request()).not.toHaveProperty('requiredTool')
+    const chunks: StreamChunk[] = [{ type: 'text-delta', index: 0, text: '你好！' }, { type: 'finish', reason: { kind: 'stop' } }]
+    const visible: StreamChunk[] = []
+    for await (const c of f.stream(chunks)) visible.push(c)
+    expect(visible).toEqual(chunks)
+  } finally { await f.ctx.fiber.dispose() }
+})
+
+it('model tools preserve explicit routing and refuse unread IDs across turns', async () => {
+  const f = await fixture(false, true)
+  try {
+    const search = vi.spyOn(f.ctx.environmentPolicyV2, 'search')
+    await f.prepare('水污染防治法是什么')
+    expect((await f.execute('policy_read', { document_id: 'short' })).isError).toBe(true)
+    expect((await f.execute('policy_search', { question: '水污染防治法', target: 'documents' })).isError).toBe(false)
+    expect(search).toHaveBeenCalledWith(expect.objectContaining({ mode: 'documents' }), expect.anything())
+    expect((await f.execute('policy_read', { document_id: 'short', scope: 'article', selector: '第一条' })).isError).toBe(false)
+    expect((await f.execute('policy_read', { document_id: 'short', version_id: 'u-fake' })).isError).toBe(true)
+    await f.execute('policy_graph', { question: '水污染防治法沿革' })
+    expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'history' }), expect.anything())
+    await f.prepare('另一个问题', 2)
+    expect((await f.execute('policy_read', { document_id: 'short' })).isError).toBe(true)
+  } finally { await f.ctx.fiber.dispose() }
+})
+
+it('model mode withholds an unsupported answer and queues a logged repair at the stop boundary', async () => {
+  const f = await fixture(false, true)
+  try {
+    const steer = vi.fn<(message: UserMessage) => void>(); f.agent.steer = steer
+    await f.prepare('水污染防治法规定什么？'); await f.request()
+    const visible: StreamChunk[] = []
+    for await (const c of f.stream([{ type: 'text-delta', index: 0, text: '法规规定罚款一万元。' }, { type: 'finish', reason: { kind: 'stop' } }])) visible.push(c)
+    expect(visible).toContainEqual({ type: 'text-delta', index: 0, text: '正在核对答案中的引用和适用条件。' })
+    await f.ctx.serial('agent/turn-stopping', { agent: f.agent, turn: 1, signal: f.signal })
+    expect(steer).toHaveBeenCalledWith(expect.objectContaining({ source: { kind: 'policy-read-check' } }))
+  } finally { await f.ctx.fiber.dispose() }
+})
+
+
+it('checks missing originals, citation identity and Chinese output without rejecting a greeting', () => {
+  expect(modelAnswerIssue('Hello, I will search the law.', '你好', [])).toContain('中文')
+  expect(modelAnswerIssue('你好！', '你好', [])).toBeUndefined()
+  expect(modelAnswerIssue('请提供完整法规名称。', '有效吗？', [])).toBeUndefined()
+  expect(modelAnswerIssue('这部法规现行有效。', '有效吗？', [])).toContain('原文')
+})
+
+it('stops repair after the configured bound instead of looping forever', async () => {
+  const f = await fixture(false, true)
+  try {
+    const steer = vi.fn<(message: UserMessage) => void>(); f.agent.steer = steer
+    await f.prepare('水污染防治法规定什么？'); await f.request()
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const visible: StreamChunk[] = []
+      for await (const c of f.stream([{ type: 'text-delta', index: 0, text: '罚款一万元。' }, { type: 'finish', reason: { kind: 'stop' } }])) visible.push(c)
+      await f.ctx.serial('agent/turn-stopping', { agent: f.agent, turn: 1, signal: f.signal })
+      if (attempt === 2) expect(visible.some(c => c.type === 'text-delta' && c.text.includes('尚未取得足够原文'))).toBe(true)
+    }
+    expect(steer).toHaveBeenCalledTimes(2)
+    const block = steer.mock.calls[0]?.[0].content[0]
+    expect(block?.type === 'text' ? block.text : '').toContain('水污染防治法规定什么')
+  } finally { await f.ctx.fiber.dispose() }
+})
+
+
+it('allows a repealed law named by an original but does not allow it as a separately read citation', async () => {
+  const f = await fixture()
+  try {
+    const result = await f.ctx.environmentPolicyV2.read({ document_id: 'short', scope: 'article', selector: '第一条' })
+    const sources: PolicyEvidence['sources'] = [{ document: result.document, text: '第一条 《旧条例》同时废止。',
+      labels: ['第一条'], source_complete: true, selection_complete: true, text_role: 'body' }]
+    expect(modelAnswerIssue('《旧条例》同时废止。\n来源：《水污染防治法》第一条', '替代哪部条例？', sources)).toBeUndefined()
+    expect(modelAnswerIssue('来源：《旧条例》', '替代哪部条例？', sources)).toContain('尚无本轮原文')
+    expect(modelAnswerIssue('《旧条例》第二条规定了条件。', '有什么条件？', sources)).toContain('尚无本轮原文')
+  } finally { await f.ctx.fiber.dispose() }
+})
+
+
+it('enforces a shared ten-call budget including failed reads, hides tools and resets next turn', async () => {
+  const f = await fixture(false, true)
+  try {
+    const search = vi.spyOn(f.ctx.environmentPolicyV2, 'search')
+    await f.prepare('水污染防治法规定什么？')
+    for (let i = 0; i < 10; i++) expect((await f.execute('policy_read', { document_id: 'not-returned' })).isError).toBe(true)
+    await f.execute('policy_search', { question: '水污染防治法' })
+    await f.execute('policy_graph', { question: '水污染防治法沿革' })
+    expect(search).not.toHaveBeenCalled()
+    const assembly = await f.ctx.systemPrompt.assemble({ signal: f.signal })
+    expect(assembly.tools).toEqual([])
+    expect(renderPrompt(assembly)).toContain('不要再调用工具')
+    await f.prepare('水污染防治法是什么？', 2)
+    await f.execute('policy_search', { question: '水污染防治法' })
+    expect(search).toHaveBeenCalledTimes(1)
+    expect((await f.ctx.systemPrompt.assemble({ signal: f.signal })).tools?.length).toBeGreaterThan(0)
+  } finally { await f.ctx.fiber.dispose() }
+})
+
+
+it('does not confuse licence durations or effective measures with statute validity', () => {
+  for (const q of ['许可证有效期多久，延续应提前多久申请？', '许可证是否有效？', '应采取哪些有效措施？', '记录需要保存多久？']) {
+    expect(assessPolicyValidity(q, undefined, [])).toBeUndefined()
+  }
+  expect(assessPolicyValidity('《水污染防治法》现在还有效吗？', undefined, [])?.status).toBe('unknown')
+})
+
+it('uses stable selection IDs, rejects unknown IDs, and renders history attribution from the source', async () => {
+  const f = await fixture()
+  try {
+    const result = await f.ctx.environmentPolicyV2.read({ document_id: 'short', scope: 'article', selector: '第一条' })
+    const sources: ModelSource[] = []
+    const original = { document: result.document, text: '第一条 《旧条例》同时废止。', labels: ['第一条'],
+      source_complete: false, selection_complete: true, text_role: 'history_evidence' }
+    const first = registerOriginal(sources, original)
+    expect(registerOriginal(sources, original).source_id).toBe(first.source_id)
+    expect(sources).toHaveLength(1)
+    expect(sourceAnswerIssue('《旧条例》同时废止。[S1]', '哪些旧条例同时废止？', sources)).toBeUndefined()
+    expect(sourceAnswerIssue('结论。[S99]', '问题', sources)).toContain('引文错误')
+    expect(sourceAnswerIssue('第二条规定。[S1]', '问题', sources)).toContain('条款缺口')
+    expect(renderSourceAnswer('旧条例同时废止。[S1]', sources)).toContain('不是当年独立完整正文')
+    expect(sourceFailureAnswer('【引文错误】文件名称不匹配', sources)).toContain('已取得的原文节选')
+    expect(sourceFailureAnswer('【引文错误】文件名称不匹配', sources)).not.toContain('尚未取得足够原文')
+  } finally { await f.ctx.fiber.dispose() }
+})
+
+it('rejects unasked validity additions and explicit province-wide extrapolation from watershed sources', async () => {
+  const f = await fixture()
+  try {
+    const result = await f.ctx.environmentPolicyV2.read({ document_id: 'short', scope: 'article', selector: '第一条' })
+    const sources: ModelSource[] = []
+    registerOriginal(sources, { document: { ...result.document, title: '江苏省太湖水污染防治条例' }, text: '第一条 本条例适用于太湖流域。',
+      labels: ['第一条'], source_complete: true, selection_complete: true, text_role: 'body' })
+    expect(sourceAnswerIssue('该法已废止。[S1]', '有哪些要求？', sources)).toContain('效力依据')
+    expect(sourceAnswerIssue('全省所有企业必须设置采样口。[S1]', '有哪些要求？', sources)).toContain('适用范围')
+    expect(sourceAnswerIssue('太湖流域适用这些要求。[S1]', '有哪些要求？', sources)).toBeUndefined()
+  } finally { await f.ctx.fiber.dispose() }
+})
+
+it('reuses successful identical search/read results without charging another backend execution', async () => {
+  const f = await fixture(false, true)
+  try {
+    const search = vi.spyOn(f.ctx.environmentPolicyV2, 'search')
+    const read = vi.spyOn(f.ctx.environmentPolicyV2, 'read')
+    await f.prepare('水污染防治法第一条')
+    await f.execute('policy_search', { question: '水污染防治法第一条' })
+    const repeated = await f.execute('policy_search', { question: '水污染防治法第一条' })
+    expect(JSON.stringify(repeated)).toContain('cached')
+    expect(search).toHaveBeenCalledTimes(1)
+    await f.execute('policy_read', { document_id: 'short', scope: 'article', selector: '第一条' })
+    await f.execute('policy_read', { document_id: 'short', scope: 'article', selector: '第一条' })
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(repeated)).toContain('remaining_tool_calls')
   } finally { await f.ctx.fiber.dispose() }
 })

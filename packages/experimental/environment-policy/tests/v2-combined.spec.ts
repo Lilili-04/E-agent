@@ -8,7 +8,7 @@ import { PolicyV2Database, type PolicyDocument } from '../src/v2-database.ts'
 import { PolicyV2CombinedSemantic } from '../src/v2-combined-semantic.ts'
 import PolicyV2Service from '../src/v2-service.ts'
 
-interface Query { where: { $and: Array<{ region?: string; document_id?: { $in: string[] } }> } }
+interface Query { where: { $and: Array<{ region?: string; document_id?: { $in?: string[]; $nin?: string[] } }> } }
 const roots: string[] = []
 afterEach(async () => { vi.unstubAllGlobals(); await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
 const hash = (s: string | Uint8Array) => createHash('sha256').update(s).digest('hex')
@@ -76,7 +76,7 @@ it('embeds once and applies region/build/document scope before all vector querie
     expect(f.embeddingCalls()).toBe(1)
     const queries = f.requests
     expect(queries).toHaveLength(4)
-    expect(queries.every(r => r.where.$and.some(x => x.document_id?.$in[0] === 'd1'))).toBe(true)
+    expect(queries.every(r => r.where.$and.some(x => x.document_id?.$in?.[0] === 'd1'))).toBe(true)
     expect(r.warnings).toEqual([])
     expect(r.passages.length).toBeGreaterThan(0)
     expect(r.passages.every(p => p.document_id === 'd1')).toBe(true)
@@ -109,6 +109,25 @@ it('refuses a manifest from another SQLite snapshot', async () => {
     const m = { ...f.manifestData, database_sha256: 'wrong' }
     await writeFile(f.manifest, JSON.stringify(m))
     expect(() => new PolicyV2CombinedSemantic(f.db, f.config, f.manifest, f.path)).toThrow('manifest')
+  } finally { f.db.close() }
+})
+
+it('queries the original vector build while excluding documents absent from the local projection', async () => {
+  const f = await fixture()
+  try {
+    const localProjection = { database_sha256: f.manifestData.database_sha256, excluded_document_ids: ['d-removed'] }
+    await writeFile(f.manifest, JSON.stringify({ ...f.manifestData, local_projection: localProjection }))
+    const result = await new PolicyV2CombinedSemantic(f.db, f.config, f.manifest, f.path)
+      .search('转移', 'passages', undefined, { regions: ['江苏省'], documentIds: ['d1'] })
+    expect(new Set(result.passages.map(p => p.document_id))).toEqual(new Set(['d1']))
+    expect(f.requests).toHaveLength(2)
+    for (const query of f.requests) {
+      expect(query.where.$and).toContainEqual({ document_id: { $nin: ['d-removed'] } })
+    }
+    await writeFile(f.manifest, JSON.stringify({
+      ...f.manifestData, local_projection: { ...localProjection, excluded_document_ids: ['d1'] },
+    }))
+    expect(() => new PolicyV2CombinedSemantic(f.db, f.config, f.manifest, f.path)).toThrow('excluded document')
   } finally { f.db.close() }
 })
 

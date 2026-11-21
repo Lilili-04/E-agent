@@ -6,11 +6,17 @@
   en: 03df190e55056477
   zh: 4d15c45c0089f0cc
 /dgx-combined-deployment/release-layout:
-  en: e5f701edc930b47a
-  zh: 47a3c763d98917da
+  en: 14ecc10aa576c4f6
+  zh: 920838d2175b9211
 /dgx-combined-deployment/start-and-verify:
-  en: bacb10e9d95e77c9
-  zh: 80eda4ec4c338a1c
+  en: abb0b5dcfa9c2aa3
+  zh: e89d5c81d7a07a89
+/dgx-combined-deployment/neo4j-login:
+  en: 710a1015f10a6852
+  zh: ab10379bc646b243
+/dgx-combined-deployment/regulation-history-viewer:
+  en: dc60a8c91c23e0a2
+  zh: f154edac3ac62c93
 /dgx-combined-deployment/backup-switch-and-restore:
   en: 908c22d1ca47b752
   zh: db812ef59c7791c2
