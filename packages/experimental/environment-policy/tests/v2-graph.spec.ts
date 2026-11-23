@@ -14,6 +14,7 @@ import { PolicyV2Database, type PolicyDocument, type PolicyV2ReadResult } from '
 import Service from '../src/v2-service.ts'
 import * as Tools from '../src/v2-tools.ts'
 import { sourceUnits } from '../src/v2-parser.ts'
+import { renderSourceAnswer, type ModelSource } from '../src/v2-model-sources.ts'
 import type { GraphContext } from '../src/v2-graph.ts'
 import { readRequest, readResult, searchResult } from '../src/v2-wire.ts'
 
@@ -194,5 +195,48 @@ it('retains a reviewed version source gap even when the body catalog says comple
     expect(implicit.document.text_status).toBe('complete')
     expect(implicit.source_complete).toBe(false)
     expect(explicit.source_complete).toBe(false)
+  } finally { await ctx.fiber.dispose() }
+})
+
+it('does not treat an as-of date as the requested version year', async () => {
+  const f = await fixture(); const ctx = new Context()
+  try {
+    await ctx.plugin(Service, { path: f.path, graphConfigPath: f.graphConfigPath })
+    const result = await ctx.environmentPolicyV2.search({ question: '截至2026年8月14日，云南省试验办法有效吗？' })
+    expect(result.graph?.identity_matched).toBe(true)
+    expect(result.graph?.selected_version_ids).toContain('ver-attachment')
+  } finally { await ctx.fiber.dispose(); vi.unstubAllGlobals() }
+})
+
+
+it('reads a turn-scoped event locator and carries its source and historical role into the citation', async () => {
+  const f = await fixture()
+  const ctx = new Context()
+  try {
+    const config = join(f.root, 'model.yml')
+    await writeFile(config, ['- name: cordis:prompt', '- name: cordis:tools', '- name: cordis:policy',
+      `  config: ${JSON.stringify({ path: f.path, graphConfigPath: f.graphConfigPath })}`,
+      '- name: cordis:policy-tools', '  config: { retrievalMode: model }', ''].join('\n'))
+    await ctx.plugin(Loader)
+    Object.assign(ctx.loader.builtins, { include: Include, prompt: SystemPrompt, tools: ToolRuntime, policy: Service, 'policy-tools': Tools })
+    await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(config).href } }); await ctx.loader.await()
+    const agent = {} as NonNullable<import('@deepseek-ai/dsh-tools').ToolExecutionInput['agent']>
+    const signal = new AbortController().signal
+    const execute = (name: string, args: object) => ctx.tools.execute({ name, arguments: args, callId: ToolCallId('graph-model'), agent, signal })
+    const parse = (result: Awaited<ReturnType<typeof execute>>): unknown => {
+      const block = result.content[0]
+      if (result.isError || block?.type !== 'text') throw new Error(JSON.stringify(result.content))
+      return JSON.parse(block.text)
+    }
+    expect((await execute('policy_read', { graph_source_id: 'G1' })).isError).toBe(true)
+    const result = parse(
+      await execute('policy_graph', { question: '《云南省试验办法》废止了什么？', region: '云南省', region_mode: 'only' })) as { graph: { events: { sources: { graph_source_id: string }[] }[] } }
+    const id = present(present(result.graph.events[0]).sources[0]).graph_source_id
+    expect((await execute('policy_read', { graph_source_id: id, document_id: 'notice' })).isError).toBe(true)
+    const page = parse(await execute('policy_read', { graph_source_id: id })) as { original_sources: ModelSource[]; text: string }
+    expect(page.text).toBe('第二条 旧办法同时废止，日期尚待核实。\n')
+    const source = present(page.original_sources[0])
+    expect(source).toMatchObject({ graph_source_id: id, text_role: 'attachment', labels: ['第二条'] })
+    expect(renderSourceAnswer('旧办法同时废止。[S1]', page.original_sources)).toContain('《云南省印发试验办法的通知》第二条（关联版本：')
   } finally { await ctx.fiber.dispose() }
 })

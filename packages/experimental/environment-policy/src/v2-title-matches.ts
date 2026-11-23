@@ -18,3 +18,25 @@ export function policyTitleMatches<T>(question: string, entries: readonly T[], n
   return [...new Set(spans.filter(span => !spans.some(other => other.start <= span.start && other.end >= span.end &&
     (other.start < span.start || other.end > span.end))).map(span => span.entry))]
 }
+
+/** Resolve a shortened legal title only when one complete title remains possible.
+ * @param question - Canonical query.
+ * @param titles - Canonical scoped legal titles.
+ * @returns Unique full title, or no resolution when absent or ambiguous.
+ */
+export function resolvePolicyShortTitle(question: string, titles: readonly string[]): string | undefined {
+  const phrase = question.replace(/^.*?[《]/u, '').replace(/》.*$/u, '')
+    .replace(/^(?:请问|请查询|查询|现在|目前|当前)+/u, '')
+    .replace(/(?:现行|现在|目前|当前|是否|是不是|还|仍|已|被|有效|废止|失效|截至|截止|在\d{4}).*$/u, '')
+    .replace(/[？?。，,！!]/gu, '').replace(/^中华人民共和国/u, '')
+  if (phrase.length < 4 || !/(?:法|条例|办法|规定)$/u.test(phrase)) return undefined
+  if (titles.some(title => title.replace(/^中华人民共和国/u, '') === phrase)) return undefined
+  const matches = [...new Set(titles)].filter((title) => {
+    const name = title.replace(/^中华人民共和国/u, '')
+    if (!name.endsWith(phrase.match(/(?:条例|办法|规定|法)$/u)?.[0] ?? '') || phrase.length >= name.length) return false
+    let position = 0
+    for (const character of name) if (character === phrase[position]) position++
+    return position === phrase.length
+  })
+  return matches.length === 1 ? matches[0] : undefined
+}

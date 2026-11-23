@@ -81,6 +81,13 @@ if __name__ == '__main__':
     graph = json.loads(Path(config['snapshot']).read_text(encoding='utf-8'))
     with sqlite3.connect(Path(args.database).resolve().as_uri() + '?mode=ro', uri=True) as db:
         documents = [r[0] for r in db.execute('select id from documents')]
+    available = set(documents)
+    excluded = set(config.get('excludedDocumentIds', []))
+    missing = {doc for version in graph['versions'] for doc in version['document_ids']} - available
+    if missing - excluded or excluded & available:
+        raise ValueError('Unexpected graph/SQLite document mismatch')
+    for version in graph['versions']:
+        version['document_ids'] = [doc for doc in version['document_ids'] if doc in available]
     result = dict(format=1, database_sha256=config['databaseSha256'], graph_sha256=config['snapshotSha256'], **build(graph, documents))
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

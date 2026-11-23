@@ -12,6 +12,9 @@ const Manifest = z.object({
   metrics: z.object({ document: z.string().required(), passage: z.string().required() }).required(),
   collections: z.object({ document: z.string().required(), passage: z.string().required() }).required(),
 })
+const LocalProjection = z.object({
+  database_sha256: z.string().required(), excluded_document_ids: z.array(z.string()).required(),
+})
 
 /** Scope is applied independently to each region before nearest-neighbor selection. */
 export interface SemanticScope { regions: readonly string[]; documentIds?: readonly string[] }
@@ -23,12 +26,24 @@ const norm = (text: string) => text.replace(/\r\n/gu, '\n')
 export class PolicyV2CombinedSemantic {
   private readonly config
   private readonly manifest
+  private readonly projection?: ReturnType<typeof LocalProjection>
 
   constructor(private readonly database: PolicyV2Database, configPath: string, manifestPath: string, databasePath: string) {
     this.config = SemanticSettings(JSON.parse(readFileSync(configPath, 'utf8')) as Parameters<typeof SemanticSettings>[0])
-    this.manifest = Manifest(JSON.parse(readFileSync(manifestPath, 'utf8')) as Parameters<typeof Manifest>[0])
+    const value: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    this.manifest = Manifest(value as Parameters<typeof Manifest>[0])
+    if (object(value) && 'local_projection' in value) {
+      const projection: unknown = value.local_projection
+      if (!object(projection)) throw new Error('Invalid combined vector projection')
+      this.projection = LocalProjection(projection as Parameters<typeof LocalProjection>[0])
+    }
     const m = this.manifest
-    if (!m.complete || m.database_sha256 !== hash(readFileSync(databasePath)) || m.dimension !== 2560 ||
+    const localHash = hash(readFileSync(databasePath))
+    const projection = this.projection
+    if (projection && (!projection.excluded_document_ids.length || projection.excluded_document_ids.some(id => database.document(id)))) {
+      throw new Error('Combined vector projection contains an available or unspecified excluded document')
+    }
+    if (!m.complete || (projection?.database_sha256 ?? m.database_sha256) !== localHash || m.dimension !== 2560 ||
       m.model !== this.config.model || m.collections.document !== this.config.documentCollection ||
       m.collections.passage !== this.config.passageCollection || m.metrics.document !== 'l2' ||
       m.metrics.passage !== 'cosine' || m.normalization !== 'l2-unit' || m.offset_unit !== 'unicode_code_point') {
@@ -48,6 +63,7 @@ export class PolicyV2CombinedSemantic {
       collection.configuration_json.hnsw.space !== m.metrics[kind]) throw new Error('Combined collection identity mismatch')
     const filters: object[] = [{ build_id: m.build_id }, { region }]
     if (scope.documentIds) filters.push({ document_id: { $in: scope.documentIds } })
+    if (this.projection) filters.push({ document_id: { $nin: this.projection.excluded_document_ids } })
     const reply = await semanticJson(`${base}/${collection.id}/query`, signal, {
       query_embeddings: [vector], n_results: kind === 'document' ? this.config.documentCandidates : this.config.passageCandidates,
       where: { $and: filters }, include: ['documents', 'metadatas', 'distances'],

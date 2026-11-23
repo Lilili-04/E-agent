@@ -1,9 +1,11 @@
 /** Automatic backend evidence preparation with optional model-facing find/read tools. */
+import { applyModelPolicyTools } from './v2-model-tools.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage, type StreamChunk, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool, type ToolExecutionInput } from '@deepseek-ai/dsh-tools'
 import type {} from './v2-service.ts'
+import { checkedPolicyAnswer, type PolicyValidity } from './v2-validity.ts'
 import { preparePolicyEvidence } from './v2-evidence.ts'
 import { preparePlannedEvidence } from './v2-plan.ts'
 import { policyModelCall } from './v2-planning-model.ts'
@@ -14,6 +16,10 @@ export const name = 'policy-v2-tools'
 export const inject = ['tools', 'systemPrompt', 'environmentPolicyV2']
 /** Backend evidence budgets and optional supplementary search limit. */
 export interface Config {
+  retrievalMode?: 'backend' | 'model'
+  maxToolCalls?: number
+  maxReadCalls?: number
+  maxAnswerRepairs?: number
   planningProvider?: string
   planningModel?: string
   planningMaxTasks?: number
@@ -31,6 +37,10 @@ export interface Config {
 }
 /** Loader configuration. */
 export const Config: z<Config> = z.object({
+  retrievalMode: z.union(['backend', 'model']).default('backend'),
+  maxToolCalls: z.number().step(1).min(1).max(100).default(10),
+  maxReadCalls: z.number().step(1).min(1).max(100).default(20),
+  maxAnswerRepairs: z.number().step(1).min(0).max(4).default(2),
   planningProvider: z.string(), planningModel: z.string(),
   planningMaxTasks: z.number().step(1).min(1).max(12).default(6),
   planningMaxSearches: z.number().step(1).min(1).max(30).default(10),
@@ -53,10 +63,11 @@ export const policyV2Prompt = [
   'policy-evidence 是供你核对法规的内部资料。不要在回答中说“根据后端提供的证据”“根据提供的证据”“证据显示”或“证据包”。不要展示 legal_status、effective_date、source_complete 等字段名；效力、日期和资料缺口用自然中文说明。可以直接引用“《某条例》第某条规定”。已有原文足够时直接回答，无须先调用工具。',
   '只回答用户所问，区分规则、条件和例外，避免扩展无关罚则和流程。证据不足、服务不可用、条款缺失时明确说明，不猜测结论。检索未命中不等于法规未规定，不得据片段作全篇否定。',
   '规划结果中的coverage逐项说明回答边界。仅对covered且有对应原文的子问题给确定结论；partial只陈述已明确的部分并说明具体缺口，不用行业示例补齐通用要求；missing只说明缺口，不编列清单；conflict同时说明相互不同的表述，不自行择一或推算日期。只使用列出的source_id对应原文，source_id不展示给用户。history_evidence引用时说明是后续文本保留记载，不能写成已读取当年完整版本。',
+  'validity 给出效力结论，有该字段时首段原样使用 opening。presumed_valid 表示本次资料范围内未查到明确的整部废止依据，按现行有效处理。unknown 保留未核实结论，后文仅解释实际查阅的原文。',
   '末尾以“来源”列出实际使用的文件标题、具体条款及已知版本信息。缺失日期或文号就省略；不要补造链接、编号引用、内部ID、路径、JSON或诊断。',
   'source_complete=false 是原始资料不完整；selection_complete=false 是所选范围未读完。片段足以回答具体条款，但未读完全文不能声称全面总结整部法规。',
   '普通问题默认库内最新版、全国范围；指定省份时包括全国和该省，仅限地方时只用地方。库内最新不代表现行有效，地域归属不代表适用于全省。',
-  '图谱仅用于版本、沿革和效力核对。没有废止记录不等于有效，未知日期保持未知，部分修改不等于全文废止。history_evidence 不能冒充历史版本正文。',
+  '图谱仅用于版本、沿革和效力核对。未知日期保持未知，部分修改不等于全文废止。history_evidence 不能冒充历史版本正文。',
   '确实缺少所需证据时才补充调用 policy_search 或 policy_read；保留用户原问题的地域、时间、版本及仅限条件。读取版本时使用本轮 read_sources 配对的ID。',
 ].join('\n')
 
@@ -75,6 +86,7 @@ interface TurnState {
   hasEvidence: boolean
   documentReads: Set<string>
   versionReads: Set<string>
+  validity?: PolicyValidity
   prepared?: boolean
   preparedInput?: string
   preparedMessage?: UserMessage
@@ -86,6 +98,11 @@ interface TurnState {
  */
 export function apply(ctx: Context, config: Config = {}): void {
   if (!!config.planningProvider !== !!config.planningModel) throw new Error('Configure both planningProvider and planningModel')
+  if (config.retrievalMode === 'model') {
+    if (config.planningProvider) throw new Error('Model tools cannot use a separate planning model')
+    applyModelPolicyTools(ctx, config)
+    return
+  }
   const states = new WeakMap<Agent, TurnState>()
   const requests = new WeakMap<AbortSignal, TurnState>()
   function freshState(turn = 0): TurnState {
@@ -139,6 +156,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     if (!result) throw new Error('Policy evidence preparation did not settle')
     const searches = planned?.searches ?? (legacy?.search ? [legacy.search] : [])
     signal.throwIfAborted()
+    if (legacy?.evidence.validity) current.validity = legacy.evidence.validity
     current.prepared = true
     current.searched = true
     current.hasEvidence = result.evidence.sources.length > 0
@@ -166,7 +184,28 @@ export function apply(ctx: Context, config: Config = {}): void {
   })
   ctx.on('llm/stream', (options, next): AsyncIterable<StreamChunk> => {
     const current = options.signal && requests.get(options.signal)
-    if (!current || options.purpose || !current.prepared || current.hasEvidence) return next()
+    if (!current || options.purpose || !current.prepared) return next()
+    if (current.validity) {
+      const validity = current.validity
+      return (async function* () {
+        const chunks: StreamChunk[] = []
+        for await (const chunk of next()) chunks.push(chunk)
+        options.signal?.throwIfAborted()
+        // Tool calls are executed normally; validate the final text on the following step.
+        if (chunks.some(chunk => chunk.type === 'block-start' && chunk.blockType === 'tool-call') ||
+          chunks.some(chunk => chunk.type === 'finish' && ['tool-calls', 'error', 'aborted'].includes(chunk.reason.kind))) { yield* chunks; return }
+        const answer = chunks.flatMap(chunk => chunk.type === 'text-delta' ? [chunk.text] : []).join('')
+        const checked = checkedPolicyAnswer(answer, validity)
+        if (checked === answer) { yield* chunks; return }
+        const block = { type: 'text' as const, text: checked }
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text: checked }
+        yield { type: 'block-end', index: 0, block }
+        for (const chunk of chunks) if (chunk.type === 'usage') yield chunk
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      })()
+    }
+    if (current.hasEvidence) return next()
     return (async function* () {
       await Promise.resolve()
       const block = { type: 'text' as const,

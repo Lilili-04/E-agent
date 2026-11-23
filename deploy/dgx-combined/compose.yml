@@ -63,14 +63,34 @@ services:
   graph:
     image: ${NEO4J_IMAGE:-neo4j:5.26.32-community}
     restart: unless-stopped
-    ports: ['127.0.0.1:17475:7474']
+    ports:
+      - '127.0.0.1:17476:7474'
+      - '${NEO4J_BIND_ADDRESS:?}:${NEO4J_HTTP_PORT:-17475}:7474'
+      - '${NEO4J_BIND_ADDRESS:?}:${NEO4J_BOLT_PORT:-17687}:7687'
     environment:
-      NEO4J_AUTH: none
+      NEO4J_dbms_security_auth__enabled: 'true'
+      NEO4J_server_http_advertised__address: '${NEO4J_BIND_ADDRESS:?}:${NEO4J_HTTP_PORT:-17475}'
+      NEO4J_server_bolt_advertised__address: '${NEO4J_BIND_ADDRESS:?}:${NEO4J_BOLT_PORT:-17687}'
       NEO4J_server_memory_heap_initial__size: 512m
       NEO4J_server_memory_heap_max__size: 1G
       NEO4J_server_memory_pagecache_size: 512m
     volumes:
       - ${GRAPH_DATA_DIR:?}:/data
+    logging:
+      options: {max-size: 10m, max-file: '3'}
+  graph-backend:
+    image: ${VIEWER_IMAGE:-e-agent-db-viewers:local}
+    network_mode: host
+    restart: unless-stopped
+    user: '1000:1000'
+    entrypoint: [/bin/sh, /deployment/graph-backend-entrypoint.sh]
+    volumes:
+      - .:/deployment:ro
+    secrets: [graph_backend_auth]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     logging:
       options: {max-size: 10m, max-file: '3'}
   sqlite-viewer:
@@ -106,8 +126,49 @@ services:
     security_opt: [no-new-privileges:true]
     logging:
       options: {max-size: 10m, max-file: '3'}
+  history-viewer:
+    image: ${VECTOR_IMAGE:-e-agent-combined-vectors:1.3.5}
+    network_mode: host
+    restart: unless-stopped
+    user: '1000:1000'
+    entrypoint: [python3, /app/server.py]
+    environment:
+      POLICY_SQLITE_FILE: /release/policy.sqlite
+      POLICY_SQLITE_SHA256: ${POLICY_SQLITE_SHA256:?}
+      POLICY_VIEWER_DATA: /evidence
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONUNBUFFERED: '1'
+    volumes:
+      - ./history-viewer:/app:ro
+      - ${HISTORY_VIEWER_DATA_DIR:?}:/evidence:ro
+      - ${RELEASE_DIR:?}/policy.sqlite:/release/policy.sqlite:ro
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      options: {max-size: 10m, max-file: '3'}
+  history-gateway:
+    image: ${VIEWER_IMAGE:-e-agent-db-viewers:local}
+    network_mode: host
+    restart: unless-stopped
+    user: '1000:1000'
+    entrypoint: [/bin/sh, /deployment/history-gateway-entrypoint.sh]
+    environment:
+      HISTORY_BIND_ADDRESS: ${NEO4J_BIND_ADDRESS:?}
+    volumes:
+      - .:/deployment:ro
+    secrets: [viewer_htpasswd]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      options: {max-size: 10m, max-file: '3'}
 secrets:
   qwen_api_key:
     file: ${QWEN_API_KEY_FILE:?}
   viewer_htpasswd:
     file: ${VIEWERS_HTPASSWD_FILE:?}
+  graph_backend_auth:
+    file: ${GRAPH_BACKEND_AUTH_FILE:?}
